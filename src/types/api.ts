@@ -70,6 +70,7 @@ export interface EnhancedTool {
   description: string;
   status: 'PROD-READY' | 'BETA' | 'DEPRECATED';
   source_url?: string;
+  api_reference_url?: string; // API documentation URL (e.g., GitHub API docs)
   preview_snippet?: string;
   category: string;
   tags: string[];
@@ -86,19 +87,51 @@ export interface EnhancedTool {
   similarity_score?: number;
 }
 
-/** Discovery log entry for SSE streaming */
+/** Discovery log entry for SSE streaming - matches backend event structure */
 export interface DiscoveryLog {
   id?: string;
-  type?: string;
-  conversation_id?: string;
   timestamp: string;
   source: 'firecrawl' | 'mcp' | 'agent' | 'system';
   message: string;
-  level?: 'info' | 'success' | 'error' | 'warning';
-  /** From API: e.g. "Generating tool: get_crypto_price", "Tool 'X' registered in marketplace" */
+  level?: 'info' | 'success' | 'error' | 'warning' | 'warn';
+  type?: string; // Event type: agent_start, assistant_message, tool_call, tool_result, completion, etc.
+
+  // agent_start fields
+  question?: string;
+  model?: string;
+  max_iterations?: number;
+
+  // assistant_message fields
+  content?: string;
+  iteration?: number;
+
+  // tool_calls_start fields
+  count?: number;
+
+  // tool_call fields
   tool_name?: string;
+  tool_id?: string;
+  arguments?: Record<string, any>;
+
+  // tool_result fields
+  status?: string; // 'success' | 'error'
+  result_preview?: string;
+  error?: string;
+
+  // api_error fields
+  status_code?: number;
+
+  // connected fields
+  conversation_id?: string;
+
+  // done signal
+  done?: boolean;
+
+  // Additional fields
   url?: string;
   query?: string;
+
+  // Generic metadata
   metadata?: Record<string, any>;
 }
 

@@ -266,16 +266,30 @@ export function DashboardMiddlePanel({
                     <p className="mt-0.5 text-xs text-zinc-500">{currentTool.description}</p>
                   )}
                 </div>
-                {currentTool.source_url && (
-                  <a
-                    href={currentTool.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-blue-400 hover:underline"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Source docs
-                  </a>
+                {((currentTool as any).api_reference_url || currentTool.source_url) && (
+                  <div className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-2">
+                    <p className="text-xs font-medium text-blue-300 mb-1">API Reference</p>
+                    <a
+                      href={(currentTool as any).api_reference_url || currentTool.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:underline break-all"
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                      {(currentTool as any).api_reference_url || currentTool.source_url}
+                    </a>
+                  </div>
+                )}
+                {currentTool.code && (
+                  <div className="rounded-lg border border-zinc-700 bg-zinc-900/50">
+                    <div className="border-b border-zinc-700 px-2 py-1.5 flex items-center gap-1.5">
+                      <FileCode className="h-3.5 w-3.5 text-zinc-400" />
+                      <p className="text-xs font-medium text-zinc-400">Source Code</p>
+                    </div>
+                    <pre className="max-h-64 overflow-auto p-2 text-xs text-zinc-300 whitespace-pre-wrap break-words">
+                      {currentTool.code}
+                    </pre>
+                  </div>
                 )}
                 {Object.keys(properties).length > 0 && (
                   <div className="space-y-2">
