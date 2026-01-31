@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Radio, Globe, FileCode, Zap } from "lucide-react";
 import type { LogEntry } from "@/types";
+import { api } from "@/lib/api-client";
+import type { DiscoveryLog } from "@/types/api";
 
 const SOURCE_ICONS = {
   firecrawl: Globe,
@@ -19,52 +21,98 @@ const SOURCE_COLORS = {
   system: "text-zinc-500",
 };
 
-const DEMO_LOGS: Omit<LogEntry, "id">[] = [
-  { timestamp: "00:00:01", source: "firecrawl", message: "Crawling https://api.openweathermap.org/docs..." },
-  { timestamp: "00:00:02", source: "firecrawl", message: "[Firecrawl] Found /api/docs/current... Ingesting..." },
-  { timestamp: "00:00:03", source: "firecrawl", message: "[Firecrawl] Extracted 12 endpoints, 3 auth params" },
-  { timestamp: "00:00:04", source: "mcp", message: "Generating MCP tool: get_current_weather" },
-  { timestamp: "00:00:05", source: "mcp", message: "TypeScript definition written to marketplace" },
-  { timestamp: "00:00:06", source: "agent", message: "Tool registered. Executing get_current_weather..." },
-  { timestamp: "00:00:07", source: "system", message: "Success → Notification sent to CTO" },
-];
+interface LiveDiscoveryHUDProps {
+  logs?: LogEntry[];
+  maxLines?: number;
+  conversationId?: string;
+  autoStart?: boolean;
+}
 
-export function LiveDiscoveryHUD({ logs: externalLogs, maxLines = 14 }: { logs?: LogEntry[]; maxLines?: number }) {
+export function LiveDiscoveryHUD({
+  logs: externalLogs,
+  maxLines = 14,
+  conversationId,
+  autoStart = true,
+}: LiveDiscoveryHUDProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isStreaming, setIsStreaming] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Auto-scroll to bottom when new logs arrive
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [logs]);
 
   useEffect(() => {
+    // If external logs provided, use those
     if (externalLogs?.length) {
       setLogs(externalLogs);
       return;
     }
-    let idx = 0;
-    const interval = setInterval(() => {
-      if (idx >= DEMO_LOGS.length) {
-        setIsStreaming(false);
-        clearInterval(interval);
-        return;
+
+    // Otherwise, connect to SSE stream if autoStart
+    if (!autoStart) return;
+
+    setIsStreaming(true);
+    setError(null);
+    setLogs([]);
+
+    try {
+      eventSourceRef.current = api.openDiscoveryStream(
+        conversationId,
+        // onMessage
+        (log: DiscoveryLog) => {
+          setLogs((prev) => [
+            ...prev.slice(-(maxLines - 1)),
+            {
+              ...log,
+              id: log.id || `log-${Date.now()}-${Math.random()}`,
+            } as LogEntry,
+          ]);
+        },
+        // onDone
+        () => {
+          setIsStreaming(false);
+          console.log('Discovery stream completed');
+        },
+        // onError
+        (err) => {
+          setError(err.message);
+          setIsStreaming(false);
+        }
+      );
+    } catch (err) {
+      console.error('Failed to start discovery stream:', err);
+      setError('Failed to connect to discovery stream');
+      setIsStreaming(false);
+    }
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
-      const entry = DEMO_LOGS[idx];
-      setLogs((prev) => [
-        ...prev.slice(-(maxLines - 1)),
-        { ...entry, id: `log-${Date.now()}-${idx}` },
-      ]);
-      idx++;
-      containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
-    }, 600);
-    return () => clearInterval(interval);
-  }, [externalLogs, maxLines]);
+    };
+  }, [externalLogs, conversationId, maxLines, autoStart]);
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/80 font-mono text-sm shadow-xl">
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-emerald-500" />
+          <div className={`h-2 w-2 rounded-full ${isStreaming ? 'bg-emerald-500' : error ? 'bg-red-500' : 'bg-zinc-600'}`} />
           <span className="font-medium text-zinc-300">Live Discovery</span>
           {isStreaming && (
             <span className="text-xs text-zinc-500">Streaming...</span>
+          )}
+          {error && (
+            <span className="text-xs text-red-400">Error</span>
           )}
         </div>
         <span className="text-xs text-zinc-500">Firecrawl → MCP</span>
@@ -73,6 +121,12 @@ export function LiveDiscoveryHUD({ logs: externalLogs, maxLines = 14 }: { logs?:
         ref={containerRef}
         className="terminal-scroll flex-1 overflow-x-hidden overflow-y-auto p-3 text-xs"
       >
+        {error && (
+          <div className="text-red-400 mb-2">{error}</div>
+        )}
+        {logs.length === 0 && !error && !isStreaming && (
+          <div className="text-zinc-500 text-center py-4">No events yet</div>
+        )}
         <AnimatePresence initial={false}>
           {logs.map((log) => {
             const Icon = SOURCE_ICONS[log.source];

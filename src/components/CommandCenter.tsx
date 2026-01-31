@@ -21,6 +21,8 @@ import { UniversalAdapterLogo } from "./UniversalAdapterLogo";
 import { CommandInput } from "./CommandInput";
 import { ResultCard } from "./ResultCard";
 import type { ViewMode } from "@/types";
+import { api } from "@/lib/api-client";
+import type { ChatResponse } from "@/types/api";
 
 const TABS: { id: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "home", label: "Dashboard", icon: LayoutDashboard },
@@ -39,33 +41,58 @@ export function CommandCenter() {
   const [reusedTool, setReusedTool] = useState(false);
   const [demoStep, setDemoStep] = useState<"idle" | "checking" | "discovering" | "forging" | "done">("idle");
   const [justCreatedToolId, setJustCreatedToolId] = useState<string | null>(null);
+  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
+  const [conversationId, setConversationId] = useState<string | undefined>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = useCallback((value: string) => {
+  const handleSubmit = useCallback(async (value: string) => {
     setLastPrompt(value);
-    const isWeatherNY = /new york|nyc|new york city/i.test(value);
-    if (isWeatherNY) {
-      setReusedTool(true);
+    setLoading(true);
+    setError(null);
+    setShowResult(false);
+    setDemoStep("idle");
+
+    try {
+      // Call real API
+      const response = await api.chat({
+        message: value,
+        conversation_id: conversationId,
+        context: {
+          ui_mode: "command_center",
+        },
+      });
+
+      // Store conversation ID for context
+      setConversationId(response.conversation_id);
+      setChatResponse(response);
+
+      // Animate through workflow steps
+      for (const step of response.workflow_steps) {
+        setDemoStep(step.step as "checking" | "discovering" | "forging" | "done");
+        // Wait for step duration (for animation)
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(step.duration_ms, 1000))
+        );
+      }
+
+      // Check if tools were reused (no new tools created)
+      setReusedTool(response.tool_calls.length > 0 && !response.actions_logged.some(a => a.title.includes('MCP tool')));
+
+      // Show results
       setShowResult(true);
-      setView("home");
-      setDemoStep("idle");
-      return;
-    }
-    setReusedTool(false);
-    setJustCreatedToolId("1"); // OpenWeatherMap = first tool "created" in demo
-    setDemoStep("checking");
-    setView("home");
-    setTimeout(() => setDemoStep("discovering"), 600);
-    setTimeout(() => {
-      setShowForgeTransition(true);
-      setView("forge");
-      setDemoStep("forging");
-    }, 1200);
-    setTimeout(() => setShowForgeTransition(false), 1600);
-    setTimeout(() => {
       setDemoStep("done");
-      setShowResult(true);
-    }, 4500);
-  }, []);
+
+      // Reset to idle after a moment
+      setTimeout(() => setDemoStep("idle"), 1000);
+    } catch (err) {
+      console.error('Chat error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process command');
+      setDemoStep("idle");
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId]);
 
   return (
     <div className="flex h-screen flex-col bg-[var(--background)] text-[var(--foreground)]">
@@ -153,22 +180,30 @@ export function CommandCenter() {
                 {demoStep === "discovering" && (
                   <p className="text-xs text-zinc-500">Discovering API…</p>
                 )}
-                <CommandInput onSubmit={handleSubmit} disabled={demoStep === "forging"} />
-                {showResult && (
+                <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />
+                {error && (
+                  <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+                    {error}
+                  </div>
+                )}
+                {showResult && chatResponse && chatResponse.tool_calls.length > 0 && (
                   <>
-                  <ResultCard
-                    title="Weather summary"
-                    subtitle={lastPrompt}
-                    data={{
-                      city: reusedTool ? "New York" : "San Francisco",
-                      temp: reusedTool ? "12°C" : "15°C",
-                      condition: "Clear sky",
-                      humidity: "72%",
-                    }}
-                    source="OpenWeatherMap (MCP)"
-                    reused={reusedTool}
-                  />
+                    {chatResponse.tool_calls.map((toolCall, idx) => (
+                      <ResultCard
+                        key={idx}
+                        title={chatResponse.response}
+                        subtitle={lastPrompt}
+                        data={toolCall.result || {}}
+                        source={`${toolCall.name} (MCP)`}
+                        reused={reusedTool}
+                      />
+                    ))}
                   </>
+                )}
+                {showResult && chatResponse && chatResponse.tool_calls.length === 0 && (
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-400">
+                    {chatResponse.response}
+                  </div>
                 )}
               </motion.div>
             )}
