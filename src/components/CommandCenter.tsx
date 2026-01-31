@@ -11,6 +11,14 @@ import {
   Radio,
   Globe,
   Zap,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  X,
+  ExternalLink,
+  Play,
+  Code2,
+  Link2,
 } from "lucide-react";
 import { TrustGovernanceLedger } from "./TrustGovernanceLedger";
 import { ApiAccess } from "./ApiAccess";
@@ -45,16 +53,23 @@ export function CommandCenter() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discoveryLogs, setDiscoveryLogs] = useState<LogEntry[]>([]);
+  const [streamingEvents, setStreamingEvents] = useState<DiscoveryLog[]>([]);
   const [forgeToolName, setForgeToolName] = useState<string | null>(null);
   const [forgeToolCode, setForgeToolCode] = useState<string | null>(null);
   const [forgeDocsMarkdown, setForgeDocsMarkdown] = useState<string | null>(null);
   const [marketplaceSearchResults, setMarketplaceSearchResults] = useState<EnhancedTool[]>([]);
   const [references, setReferences] = useState<ReferenceItem[]>([]);
   const [currentToolForPanel, setCurrentToolForPanel] = useState<EnhancedTool | null>(null);
+  const [selectedToolForDrawer, setSelectedToolForDrawer] = useState<EnhancedTool | null>(null);
+  const [toolExecuting, setToolExecuting] = useState(false);
+  const [toolExecutionResult, setToolExecutionResult] = useState<any>(null);
+  const [toolExecutionError, setToolExecutionError] = useState<string | null>(null);
+  const [toolParamInputs, setToolParamInputs] = useState<Record<string, any>>({});
   const eventSourceRef = useRef<EventSource | null>(null);
   const chatSentRef = useRef(false);
   const pendingNavigateToolRef = useRef<string | null>(null);
   const hasNavigatedToForgeRef = useRef(false);
+  const [showStreamingEvents, setShowStreamingEvents] = useState(true);
 
   /** When agent generates a new tool, switch to forge layout: marketplace on left, code + refs in center */
   const forgeMode = !!(
@@ -63,6 +78,62 @@ export function CommandCenter() {
     demoStep === "forging" ||
     (showResult && (chatResponse?.tool_calls?.length ?? 0) > 0 && !reusedTool)
   );
+
+  // Initialize tool parameters when drawer opens
+  useEffect(() => {
+    if (selectedToolForDrawer) {
+      const defaults: Record<string, any> = {};
+      if (selectedToolForDrawer.parameters?.properties) {
+        Object.entries(selectedToolForDrawer.parameters.properties).forEach(([name, param]: [string, any]) => {
+          if (param.default !== undefined) {
+            defaults[name] = param.default;
+          } else if (param.type === 'integer') {
+            defaults[name] = 0;
+          } else if (param.type === 'string') {
+            defaults[name] = '';
+          } else if (param.type === 'boolean') {
+            defaults[name] = false;
+          }
+        });
+      }
+      setToolParamInputs(defaults);
+      setToolExecutionResult(null);
+      setToolExecutionError(null);
+    }
+  }, [selectedToolForDrawer]);
+
+  const handleToolExecute = useCallback(async () => {
+    if (!selectedToolForDrawer) return;
+
+    setToolExecuting(true);
+    setToolExecutionError(null);
+    setToolExecutionResult(null);
+
+    try {
+      const result = await api.executeTool(selectedToolForDrawer.name, toolParamInputs);
+      setToolExecutionResult(result);
+    } catch (err) {
+      console.error('Tool execution failed:', err);
+      setToolExecutionError(err instanceof Error ? err.message : 'Execution failed');
+    } finally {
+      setToolExecuting(false);
+    }
+  }, [selectedToolForDrawer, toolParamInputs]);
+
+  const handleToolParamChange = useCallback((name: string, value: any, type: string) => {
+    let parsedValue = value;
+
+    // Type conversion
+    if (type === 'integer') {
+      parsedValue = value === '' ? 0 : parseInt(value, 10);
+    } else if (type === 'number') {
+      parsedValue = value === '' ? 0 : parseFloat(value);
+    } else if (type === 'boolean') {
+      parsedValue = value === 'true' || value === true;
+    }
+
+    setToolParamInputs(prev => ({ ...prev, [name]: parsedValue }));
+  }, []);
 
   // When chatResponse arrives after [DONE], show code + tool in middle panel (stay on dashboard)
   useEffect(() => {
@@ -100,6 +171,7 @@ export function CommandCenter() {
     setShowResult(false);
     setDemoStep("checking");
     setDiscoveryLogs([]);
+    setStreamingEvents([]);
     setForgeToolName(null);
     setForgeToolCode(null);
     setForgeDocsMarkdown(null);
@@ -113,6 +185,11 @@ export function CommandCenter() {
 
     const maxLogs = 50;
     const pushLog = (log: DiscoveryLog) => {
+      // Capture streaming events for real-time display
+      if (log.type === 'assistant_message' || log.type === 'tool_call' || log.type === 'tool_result') {
+        setStreamingEvents((prev) => [...prev.slice(-(maxLogs - 1)), log]);
+      }
+
       // Capture tool name from "Tool 'X' registered in marketplace" so we can navigate even if chat response is late
       if (log.tool_name && (log.message?.includes("registered") || log.message?.includes("registered in marketplace"))) {
         pendingNavigateToolRef.current = log.tool_name;
@@ -296,9 +373,131 @@ export function CommandCenter() {
                     Discover → build → save → reuse.
                   </p>
                 </div>
+
+                {/* Streaming Agent Messages */}
+                {streamingEvents.length > 0 && (
+                  <div className="shrink-0 rounded-lg border border-zinc-800 bg-zinc-950/80 shadow-xl">
+                    <button
+                      onClick={() => setShowStreamingEvents(!showStreamingEvents)}
+                      className="flex w-full items-center justify-between border-b border-zinc-800 px-4 py-3 hover:bg-zinc-900/50"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`h-2 w-2 rounded-full ${loading ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
+                        <span className="font-medium text-zinc-300">Agent Stream</span>
+                        {loading && (
+                          <Loader2 className="h-3 w-3 animate-spin text-zinc-500" />
+                        )}
+                      </div>
+                      <span className="text-xs text-zinc-500">
+                        {streamingEvents.length} event{streamingEvents.length !== 1 ? 's' : ''}
+                      </span>
+                    </button>
+                    {showStreamingEvents && (
+                      <div className="terminal-scroll max-h-96 overflow-y-auto p-4 space-y-3">
+                        {streamingEvents.map((event, idx) => {
+                          // Assistant message - show prominently
+                          if (event.type === 'assistant_message') {
+                            return (
+                              <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <Zap className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs text-zinc-500 mb-1">
+                                      Agent · Iteration {event.iteration}
+                                    </div>
+                                    <p className="text-sm text-zinc-200 leading-relaxed">
+                                      {event.content}
+                                    </p>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          }
+
+                          // Tool call - show with arguments
+                          if (event.type === 'tool_call') {
+                            return (
+                              <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-3"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <Zap className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs text-blue-400 font-medium mb-1">
+                                      Calling: {event.tool_name}
+                                    </div>
+                                    {event.arguments && Object.keys(event.arguments).length > 0 && (
+                                      <pre className="text-xs text-zinc-400 bg-zinc-950/50 rounded p-2 overflow-x-auto">
+                                        {JSON.stringify(event.arguments, null, 2)}
+                                      </pre>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          }
+
+                          // Tool result - show with status
+                          if (event.type === 'tool_result') {
+                            const isSuccess = event.status === 'success';
+                            return (
+                              <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={`rounded-lg border p-3 ${
+                                  isSuccess
+                                    ? 'border-emerald-800/50 bg-emerald-900/10'
+                                    : 'border-red-800/50 bg-red-900/10'
+                                }`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  {isSuccess ? (
+                                    <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`text-xs font-medium mb-1 ${
+                                      isSuccess ? 'text-emerald-400' : 'text-red-400'
+                                    }`}>
+                                      {event.tool_name} · {event.status}
+                                    </div>
+                                    {event.result_preview && (
+                                      <pre className="text-xs text-zinc-400 bg-zinc-950/50 rounded p-2 overflow-x-auto">
+                                        {event.result_preview}
+                                      </pre>
+                                    )}
+                                    {event.error && (
+                                      <p className="text-xs text-red-400">{event.error}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          }
+
+                          return null;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex-1 min-h-0">
                   <MarketplaceCenter
-                    onSelectTool={setCurrentToolForPanel}
+                    onSelectTool={(tool) => {
+                      setCurrentToolForPanel(tool);
+                      setSelectedToolForDrawer(tool);
+                    }}
                     marketplaceChecking={loading && demoStep === "checking"}
                   />
                 </div>
@@ -449,6 +648,283 @@ export function CommandCenter() {
           <span className="text-zinc-400">Algolia</span>
         </p>
       </footer>
+
+      {/* Tool Details Drawer */}
+      <AnimatePresence>
+        {selectedToolForDrawer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex justify-end bg-black/50"
+            onClick={() => setSelectedToolForDrawer(null)}
+          >
+            <motion.aside
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.2 }}
+              className="flex h-full w-full max-w-3xl flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <FileCode className="h-5 w-5 text-zinc-400" />
+                  <h2 className="font-semibold text-zinc-100">Tool Details</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedToolForDrawer(null)}
+                  className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="terminal-scroll flex-1 overflow-y-auto p-6">
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-semibold text-zinc-100">{selectedToolForDrawer.name}</h3>
+                        <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{selectedToolForDrawer.description}</p>
+                      </div>
+                    </div>
+
+                    {/* Metadata */}
+                    <div className="mt-4 flex flex-wrap gap-4 text-xs text-zinc-500">
+                      {selectedToolForDrawer.category && (
+                        <div>
+                          <span className="text-zinc-600">Category:</span>{' '}
+                          <span className="text-zinc-400">{selectedToolForDrawer.category}</span>
+                        </div>
+                      )}
+                      {selectedToolForDrawer.usage_count !== undefined && (
+                        <div>
+                          <span className="text-zinc-600">Usage:</span>{' '}
+                          <span className="text-zinc-400">{selectedToolForDrawer.usage_count} times</span>
+                        </div>
+                      )}
+                      {selectedToolForDrawer.verified && (
+                        <div className="flex items-center gap-1 text-emerald-400">
+                          <span>✓</span> Verified
+                        </div>
+                      )}
+                      {selectedToolForDrawer.created_at && (
+                        <div>
+                          <span className="text-zinc-600">Created:</span>{' '}
+                          <span className="text-zinc-400">
+                            {new Date(selectedToolForDrawer.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tags */}
+                    {selectedToolForDrawer.tags && selectedToolForDrawer.tags.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {selectedToolForDrawer.tags.map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* API Reference / Source URL */}
+                  {(selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url) && (
+                    <div className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Link2 className="h-4 w-4 text-blue-400" />
+                        <h4 className="text-sm font-medium text-blue-300">API Reference</h4>
+                      </div>
+                      <a
+                        href={selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 hover:underline break-all"
+                      >
+                        {selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Preview Snippet */}
+                  {selectedToolForDrawer.preview_snippet && (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-4">
+                      <p className="mb-2 text-xs font-medium text-zinc-500">
+                        Function Signature
+                      </p>
+                      <pre className="font-mono text-sm leading-relaxed text-zinc-300">
+                        {selectedToolForDrawer.preview_snippet}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Parameters Schema */}
+                  {selectedToolForDrawer.parameters && Object.keys(selectedToolForDrawer.parameters.properties || {}).length > 0 && (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Code2 className="h-4 w-4 text-zinc-400" />
+                        <h4 className="text-sm font-medium text-zinc-300">Parameters</h4>
+                      </div>
+                      <div className="space-y-3">
+                        {Object.entries(selectedToolForDrawer.parameters.properties).map(([name, param]: [string, any]) => (
+                          <div key={name} className="border-l-2 border-zinc-700 pl-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <code className="text-sm font-medium text-emerald-400">{name}</code>
+                              <span className="text-xs text-zinc-500">{param.type}</span>
+                              {selectedToolForDrawer.parameters.required?.includes(name) && (
+                                <span className="text-xs text-red-400">required</span>
+                              )}
+                            </div>
+                            {param.description && (
+                              <p className="text-xs text-zinc-500">{param.description}</p>
+                            )}
+                            {param.default !== undefined && (
+                              <p className="text-xs text-zinc-600 mt-1">
+                                Default: <code className="text-zinc-500">{JSON.stringify(param.default)}</code>
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Execute Tool Section */}
+                  {selectedToolForDrawer.parameters && Object.keys(selectedToolForDrawer.parameters.properties || {}).length > 0 && (
+                    <div className="rounded-lg border border-emerald-800/50 bg-emerald-900/10 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Zap className="h-4 w-4 text-emerald-400" />
+                        <h4 className="text-sm font-medium text-emerald-300">Execute Tool</h4>
+                      </div>
+
+                      {/* Parameter Input Form */}
+                      <div className="space-y-3 mb-4">
+                        {Object.entries(selectedToolForDrawer.parameters.properties).map(([name, param]: [string, any]) => (
+                          <div key={name}>
+                            <label className="block text-xs font-medium text-zinc-400 mb-1">
+                              {name}
+                              {selectedToolForDrawer.parameters.required?.includes(name) && (
+                                <span className="text-red-400 ml-1">*</span>
+                              )}
+                            </label>
+                            {param.type === 'boolean' ? (
+                              <select
+                                value={toolParamInputs[name]?.toString() || 'false'}
+                                onChange={(e) => handleToolParamChange(name, e.target.value, param.type)}
+                                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+                              >
+                                <option value="false">false</option>
+                                <option value="true">true</option>
+                              </select>
+                            ) : (
+                              <input
+                                type={param.type === 'integer' || param.type === 'number' ? 'number' : 'text'}
+                                value={toolParamInputs[name] ?? ''}
+                                onChange={(e) => handleToolParamChange(name, e.target.value, param.type)}
+                                placeholder={param.description || `Enter ${name}`}
+                                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none"
+                              />
+                            )}
+                            {param.description && (
+                              <p className="text-xs text-zinc-600 mt-1">{param.description}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Execute Button */}
+                      <button
+                        type="button"
+                        onClick={handleToolExecute}
+                        disabled={toolExecuting}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {toolExecuting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Executing...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4" />
+                            Run Tool
+                          </>
+                        )}
+                      </button>
+
+                      {/* Execution Result */}
+                      {toolExecutionResult && (
+                        <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-900/20 p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CheckCircle className="h-4 w-4 text-emerald-400" />
+                            <h5 className="text-sm font-medium text-emerald-300">Execution Result</h5>
+                          </div>
+                          {toolExecutionResult.execution_metadata && (
+                            <div className="mb-3 flex flex-wrap gap-3 text-xs text-zinc-400">
+                              <div>
+                                Duration: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.duration_ms}ms</span>
+                              </div>
+                              {toolExecutionResult.execution_metadata.cached && (
+                                <div className="text-blue-400">✓ Cached</div>
+                              )}
+                              {toolExecutionResult.execution_metadata.api_calls_made !== undefined && (
+                                <div>
+                                  API Calls: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.api_calls_made}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="rounded border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto">
+                            <pre className="font-mono text-xs text-zinc-300">
+                              {JSON.stringify(toolExecutionResult.result, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Execution Error */}
+                      {toolExecutionError && (
+                        <div className="mt-4 rounded-lg border border-red-700 bg-red-900/20 p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <XCircle className="h-4 w-4 text-red-400" />
+                            <h5 className="text-sm font-medium text-red-300">Execution Failed</h5>
+                          </div>
+                          <p className="text-sm text-red-400">{toolExecutionError}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Code Block */}
+                  {selectedToolForDrawer.code && (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Code2 className="h-4 w-4 text-zinc-400" />
+                        <h4 className="text-sm font-medium text-zinc-300">Source Code</h4>
+                        <span className="text-xs text-zinc-500">Python</span>
+                      </div>
+                      <div className="rounded border border-zinc-800 bg-zinc-950 p-4 overflow-x-auto">
+                        <pre className="font-mono text-xs leading-relaxed text-zinc-300">
+                          <code>{selectedToolForDrawer.code}</code>
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
