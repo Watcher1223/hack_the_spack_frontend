@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0b;
+  --foreground: #fafafa;
+  --muted: #71717a;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --ring: #3b82f6;
+  --success: #22c55e;
+  --warning: #eab308;
+  --danger: #ef4444;
+  --firecrawl: #f97316;
+  --forge-left: #18181b;
+  --forge-right: #0c0c0e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Terminal scrollbar */
+.terminal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-scroll::-webkit-scrollbar-track {
+  background: #18181b;
+}
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+/* Hide scrollbar (e.g. Generated MCP panel) – element and all descendants */
+.scrollbar-hide,
+.scrollbar-hide * {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-hide *::-webkit-scrollbar {
+  display: none;
+}
+
+/* MCP Forge resizable split */
+.forge-left-panel {
+  width: 100%;
+  min-height: 200px;
+}
+@media (min-width: 768px) {
+  .forge-left-panel {
+    width: var(--left-pct, 33%);
+  }
+}
+
+/* Raw documentation markdown (left panel) */
+.docs-markdown h1:first-child {
+  margin-top: 0;
+}
+.docs-code-block {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.docs-code-block::-webkit-scrollbar {
+  display: none;
+}
+
+/* Code block styling in forge */
+.forge-code pre {
+  margin: 0;
+  padding: 1rem;
+  overflow: auto;
+}
+.forge-code .token.keyword { color: #c084fc; }
+.forge-code .token.string { color: #86efac; }
+.forge-code .token.function { color: #93c5fd; }
+.forge-code .token.comment { color: #6b7280; }
+
+/* Self-healing flash */
+@keyframes red-flash {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(239, 68, 68, 0.15); }
+}
+.self-heal-flash {
+  animation: red-flash 0.6s ease-out;
+}
+
+/* Log line streaming */
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.log-cursor {
+  animation: cursor-blink 1s step-end infinite;
+}

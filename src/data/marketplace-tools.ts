@@ -1,0 +1,58 @@
+import type { VerifiedCapability } from "@/types";
+
+export const MARKETPLACE_TOOLS: VerifiedCapability[] = [
+  {
+    id: "1",
+    name: "OpenWeatherMap",
+    description: "Current weather by city",
+    status: "PROD-READY",
+    sourceUrl: "https://api.openweathermap.org/docs",
+    muxPlaybackId: "demo-playback-id",
+    createdAt: "2025-01-30T10:00:00Z",
+    previewSnippet: "get_current_weather(q: string, units?: 'metric' | 'imperial')",
+  },
+  {
+    id: "2",
+    name: "Instagram Graph API",
+    description: "Media and profile read",
+    status: "SANDBOXED",
+    sourceUrl: "https://developers.facebook.com/docs/instagram-api",
+    createdAt: "2025-01-29T14:00:00Z",
+    previewSnippet: "get_media(q: string), get_profile(user_id: string)",
+  },
+  {
+    id: "3",
+    name: "Stripe Payments",
+    description: "Charges and customers",
+    status: "PROD-READY",
+    muxPlaybackId: "stripe-audit-id",
+    createdAt: "2025-01-28T09:00:00Z",
+    previewSnippet: "create_charge(amount, currency), list_customers()",
+  },
+  {
+    id: "4",
+    name: "Custom Internal API",
+    description: "Internal docs (new)",
+    status: "UNVERIFIED",
+    createdAt: "2025-01-30T11:30:00Z",
+    previewSnippet: "Internal endpoints — pending verification",
+  },
+  {
+    id: "5",
+    name: "GitHub Repos",
+    description: "List repos and create issues",
+    status: "PROD-READY",
+    sourceUrl: "https://docs.github.com/en/rest",
+    createdAt: "2025-01-27T16:00:00Z",
+    previewSnippet: "list_repos(), create_issue(owner, repo, title, body)",
+  },
+  {
+    id: "6",
+    name: "Slack Messages",
+    description: "Send and read channel messages",
+    status: "SANDBOXED",
+    sourceUrl: "https://api.slack.com/methods",
+    createdAt: "2025-01-26T12:00:00Z",
+    previewSnippet: "post_message(channel, text), list_channels()",
+  },
+];
