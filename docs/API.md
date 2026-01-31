@@ -4,6 +4,31 @@ This doc describes how external agents or apps integrate with the Universal Adap
 
 ---
 
+## Universal Adapter API 2.0.0 (OAS 3.1)
+
+This frontend targets the **Universal Adapter API 2.0.0** — “AI agent with tool marketplace and governance - Production v2.0”. The backend exposes OpenAPI 3.1 at `/openapi.json`.
+
+**Base URL:** `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`).
+
+**Endpoints used by the frontend:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/chat` | Chat with workflow steps, tool calls, action logging |
+| `GET` | `/api/discovery/stream` | SSE stream for real-time discovery logs |
+| `GET` | `/tools` | List tools (`?limit=50&skip=0`) |
+| `GET` | `/tools/search` | Search tools (`?q=...&limit=10`) |
+| `GET` | `/tools/{name}` | Get tool by name |
+| `GET` | `/tools/{name}/code` | Get generated tool code (for MCP Forge) |
+| `DELETE` | `/tools/{name}` | Delete tool |
+| `POST` | `/tools/{tool_name}/execute` | Execute tool (body: JSON params) |
+| `POST` | `/api/forge/generate` | Generate MCP tool from API docs (`source_url`, `force_regenerate`) |
+| `GET` | `/api/actions` | Get actions feed |
+| `GET` | `/api/governance/verified-tools` | Get verified tools |
+| `GET` | `/health` | Health check |
+
+---
+
 ## Why API access?
 
 - **Usefulness:** Our platform turns REST APIs into agent-callable tools (Firecrawl → MCP → marketplace). Exposing an API lets *any* agent use those tools without building or hosting MCPs.
@@ -26,18 +51,21 @@ This doc describes how external agents or apps integrate with the Universal Adap
 
 ---
 
-## Endpoints (suggested for backend)
+## Endpoints (external / API key consumers)
+
+Same API 2.0.0; paths use `/tools` (not `/api/tools`):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/tools` | List all tools. Optional query: `?q=weather` (search by name/description). |
-| `GET` | `/api/tools/:id` | Tool detail: name, description, status, **input schema** (params), source URL. |
-| `POST` | `/api/tools/:id/execute` | Execute tool. Body: JSON with params (e.g. `{"q": "San Francisco", "units": "metric"}`). Returns tool output (e.g. weather object). |
+| `GET` | `/tools` | List all tools. Query: `?limit=50&skip=0`. |
+| `GET` | `/tools/search` | Search by query: `?q=weather&limit=10`. |
+| `GET` | `/tools/{name}` | Tool detail: name, description, status, **parameters** (input schema), source URL. |
+| `POST` | `/tools/{name}/execute` | Execute tool. Body: JSON with params (e.g. `{"river_name": "Delaware River"}`). Returns tool result. |
 
 Optional:
 
-- `GET /api/tools/:id/mcp` — Export MCP definition for that tool (for clients that want to run MCP locally).
-- `GET /api/me` or `GET /api/keys` — API key management (create, list, revoke).
+- `GET /tools/{name}/code` — Generated Python code for the tool (for display).
+- `GET /api/me` or `GET /api/keys` — API key management (create, list, revoke) when implemented.
 
 ---
 
@@ -45,7 +73,7 @@ Optional:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.universal-adapter.dev/api/tools
+  https://api.universal-adapter.dev/tools
 ```
 
 Response shape (example):
@@ -72,8 +100,8 @@ Response shape (example):
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"q": "New York", "units": "metric"}' \
-  https://api.universal-adapter.dev/api/tools/get_current_weather/execute
+  -d '{"river_name": "Delaware River"}' \
+  https://api.universal-adapter.dev/tools/get_usgs_streamflow_data/execute
 ```
 
 Response: structured result from the tool (e.g. weather API response).
@@ -90,4 +118,4 @@ For agents that speak MCP natively (e.g. Claude with MCP client), you can expose
 
 - **Add API-level access:** Yes — it’s how “another agent gets an API key and has access to all our tools.”
 - **Usefulness:** We create tools from the web (Firecrawl + MCP Forge); we store them; we run them. The API is how agents consume that without re-discovering or re-building.
-- **Backend:** Implement `GET /api/tools`, `GET /api/tools/:id`, `POST /api/tools/:id/execute` + API key auth; optionally MCP server. Frontend “API” tab already documents this for users.
+- **Backend:** Universal Adapter API 2.0.0 implements `GET /tools`, `GET /tools/{name}`, `POST /tools/{name}/execute`, `/chat`, `/api/discovery/stream`, etc. See `/openapi.json` for the full OAS 3.1 spec. Frontend “API” tab documents this for users.

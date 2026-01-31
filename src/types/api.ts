@@ -51,16 +51,16 @@ export interface ChatRequest {
   };
 }
 
-/** Enhanced chat response with workflow tracking */
+/** Enhanced chat response with workflow tracking (workflow_steps optional for simple backend) */
 export interface ChatResponse {
-  success: boolean;
+  success?: boolean;
   response: string;
   conversation_id: string;
-  model: string;
-  workflow_steps: WorkflowStep[];
-  tool_calls: ToolCall[];
-  actions_logged: ActionLog[];
-  metadata: ChatMetadata;
+  model?: string;
+  workflow_steps?: WorkflowStep[];
+  tool_calls: Array<{ name: string; arguments?: Record<string, unknown>; result?: Record<string, unknown> }>;
+  actions_logged?: ActionLog[];
+  metadata?: ChatMetadata;
 }
 
 /** Enhanced tool with UI fields */
@@ -89,10 +89,16 @@ export interface EnhancedTool {
 /** Discovery log entry for SSE streaming */
 export interface DiscoveryLog {
   id?: string;
+  type?: string;
+  conversation_id?: string;
   timestamp: string;
   source: 'firecrawl' | 'mcp' | 'agent' | 'system';
   message: string;
-  level: 'info' | 'success' | 'error' | 'warning';
+  level?: 'info' | 'success' | 'error' | 'warning';
+  /** From API: e.g. "Generating tool: get_crypto_price", "Tool 'X' registered in marketplace" */
+  tool_name?: string;
+  url?: string;
+  query?: string;
   metadata?: Record<string, any>;
 }
 

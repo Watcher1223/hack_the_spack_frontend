@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   Search,
   Package,
@@ -41,11 +43,52 @@ function ToolPreviewDrawer({
   tool,
   onClose,
 }: {
-  tool: VerifiedCapability;
+  tool: VerifiedCapability & {
+    name: string;
+    status?: string;
+    parameters?: { type: string; properties?: Record<string, { type?: string; description?: string }>; required?: string[] };
+    created_at?: string;
+  };
   onClose: () => void;
 }) {
-  const config = STATUS_CONFIG[tool.status];
+  // API (EnhancedTool) uses BETA/DEPRECATED; UI (ToolStatus) uses SANDBOXED/UNVERIFIED/PROD-READY
+  const rawStatus = String(tool.status ?? "");
+  const statusKey: ToolStatus =
+    rawStatus === "BETA"
+      ? "SANDBOXED"
+      : rawStatus === "DEPRECATED"
+        ? "UNVERIFIED"
+        : rawStatus === "SANDBOXED" || rawStatus === "UNVERIFIED"
+          ? (rawStatus as ToolStatus)
+          : "PROD-READY";
+  const config = STATUS_CONFIG[statusKey];
   const Icon = config.icon;
+  const [executeResult, setExecuteResult] = useState<Record<string, unknown> | null>(null);
+  const [executeLoading, setExecuteLoading] = useState(false);
+  const [executeError, setExecuteError] = useState<string | null>(null);
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
+
+  const properties = tool.parameters?.properties ?? {};
+  const required = new Set(tool.parameters?.required ?? []);
+
+  const handleExecute = async () => {
+    setExecuteLoading(true);
+    setExecuteError(null);
+    setExecuteResult(null);
+    try {
+      const params: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(paramValues)) {
+        if (val === "" && !required.has(key)) continue;
+        params[key] = val;
+      }
+      const res = await api.executeTool(tool.name, params);
+      setExecuteResult(typeof res.result === "object" && res.result != null ? res.result : { result: res });
+    } catch (err) {
+      setExecuteError(err instanceof Error ? err.message : "Execution failed");
+    } finally {
+      setExecuteLoading(false);
+    }
+  };
 
   return (
     <motion.div
@@ -118,8 +161,49 @@ function ToolPreviewDrawer({
                 </pre>
               </div>
             )}
+            <div>
+              <button
+                type="button"
+                onClick={handleExecute}
+                disabled={executeLoading}
+                className="flex items-center gap-2 rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+              >
+                <Play className="h-4 w-4" />
+                {executeLoading ? "Running…" : "Test / Execute"}
+              </button>
+              {executeError && (
+                <div className="mt-2 max-h-40 overflow-y-auto overflow-x-hidden rounded border border-red-800/60 bg-red-950/30 p-3">
+                  <p className="break-words whitespace-pre-wrap font-mono text-xs text-red-400">
+                    {executeError}
+                  </p>
+                </div>
+              )}
+              {executeResult != null && (
+                <div className="mt-2 max-h-56 overflow-y-auto overflow-x-hidden rounded border border-zinc-700 bg-zinc-900/80 [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words [&_pre]:!overflow-visible">
+                  <SyntaxHighlighter
+                    language="json"
+                    style={oneDark}
+                    wrapLongLines
+                    customStyle={{
+                      margin: 0,
+                      padding: "0.75rem 1rem",
+                      background: "transparent",
+                      fontSize: "0.75rem",
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      overflowWrap: "break-word",
+                    }}
+                    codeTagProps={{ style: { background: "transparent" } }}
+                    showLineNumbers={false}
+                  >
+                    {JSON.stringify(executeResult, null, 2)}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
             <p className="text-xs text-zinc-500">
-              Added {new Date(tool.createdAt).toLocaleDateString()}
+              Added {(tool.created_at ?? tool.createdAt) ? new Date(tool.created_at ?? tool.createdAt).toLocaleDateString() : "—"}
             </p>
           </div>
         </div>
@@ -140,10 +224,14 @@ export function ToolMarketplace({
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState(false);
 
-  // Fetch tools on mount
+  // Fetch tools on mount and when we navigate here with a newly created tool (so it appears in the list)
   useEffect(() => {
     loadTools();
   }, []);
+
+  useEffect(() => {
+    if (justCreatedToolId) loadTools();
+  }, [justCreatedToolId]);
 
   const loadTools = async () => {
     setLoading(true);
@@ -251,7 +339,13 @@ export function ToolMarketplace({
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((tool) => {
-                const config = STATUS_CONFIG[tool.status];
+                const statusKey =
+                  tool.status === "BETA"
+                    ? "SANDBOXED"
+                    : tool.status === "DEPRECATED"
+                      ? "UNVERIFIED"
+                      : (tool.status as ToolStatus);
+                const config = STATUS_CONFIG[statusKey];
                 const Icon = config.icon;
                 return (
                   <motion.li
@@ -268,7 +362,7 @@ export function ToolMarketplace({
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-medium text-zinc-100">{tool.name}</h3>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          {justCreatedToolId === tool.id && (
+                          {(justCreatedToolId === tool.id || justCreatedToolId === tool.name) && (
                             <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
                               Just created
                             </span>

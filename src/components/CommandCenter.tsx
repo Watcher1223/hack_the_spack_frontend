@@ -1,35 +1,33 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
-  Flame,
   Shield,
-  Activity,
-  ChevronRight,
-  Package,
   KeyRound,
+  Check,
+  FileCode,
+  Radio,
+  Globe,
+  Zap,
 } from "lucide-react";
-import { LiveDiscoveryHUD } from "./LiveDiscoveryHUD";
-import { MCPForge } from "./MCPForge";
 import { TrustGovernanceLedger } from "./TrustGovernanceLedger";
-import { ActionCenter } from "./ActionCenter";
-import { ToolMarketplace } from "./ToolMarketplace";
 import { ApiAccess } from "./ApiAccess";
 import { UniversalAdapterLogo } from "./UniversalAdapterLogo";
 import { CommandInput } from "./CommandInput";
 import { ResultCard } from "./ResultCard";
+import { DashboardMiddlePanel, type ReferenceItem } from "./DashboardMiddlePanel";
+import { MarketplaceCenter } from "./MarketplaceCenter";
 import type { ViewMode } from "@/types";
+import type { LogEntry } from "@/types";
 import { api } from "@/lib/api-client";
-import type { ChatResponse } from "@/types/api";
+import type { ChatResponse, DiscoveryLog } from "@/types/api";
+import type { EnhancedTool } from "@/types/api";
 
 const TABS: { id: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "home", label: "Dashboard", icon: LayoutDashboard },
-  { id: "marketplace", label: "Marketplace", icon: Package },
-  { id: "forge", label: "MCP Forge", icon: Flame },
   { id: "ledger", label: "Audit Trail", icon: Shield },
-  { id: "action", label: "Action Center", icon: Activity },
   { id: "api", label: "API", icon: KeyRound },
 ];
 
@@ -43,56 +41,193 @@ export function CommandCenter() {
   const [justCreatedToolId, setJustCreatedToolId] = useState<string | null>(null);
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
+  const [conversations, setConversations] = useState<{ id: string; prompt?: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discoveryLogs, setDiscoveryLogs] = useState<LogEntry[]>([]);
+  const [forgeToolName, setForgeToolName] = useState<string | null>(null);
+  const [forgeToolCode, setForgeToolCode] = useState<string | null>(null);
+  const [forgeDocsMarkdown, setForgeDocsMarkdown] = useState<string | null>(null);
+  const [marketplaceSearchResults, setMarketplaceSearchResults] = useState<EnhancedTool[]>([]);
+  const [references, setReferences] = useState<ReferenceItem[]>([]);
+  const [currentToolForPanel, setCurrentToolForPanel] = useState<EnhancedTool | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const chatSentRef = useRef(false);
+  const pendingNavigateToolRef = useRef<string | null>(null);
+  const hasNavigatedToForgeRef = useRef(false);
+
+  /** When agent generates a new tool, switch to forge layout: marketplace on left, code + refs in center */
+  const forgeMode = !!(
+    forgeToolName ||
+    forgeToolCode ||
+    demoStep === "forging" ||
+    (showResult && (chatResponse?.tool_calls?.length ?? 0) > 0 && !reusedTool)
+  );
+
+  // When chatResponse arrives after [DONE], show code + tool in middle panel (stay on dashboard)
+  useEffect(() => {
+    if (!showResult || !chatResponse?.tool_calls?.length || hasNavigatedToForgeRef.current) return;
+    const toolName = chatResponse.tool_calls[0].name;
+    if (!toolName) return;
+    hasNavigatedToForgeRef.current = true;
+    api
+      .getToolCode(toolName)
+      .then((codeRes) => {
+        setForgeToolName(codeRes.name);
+        setForgeToolCode(codeRes.code);
+        setJustCreatedToolId(toolName);
+      })
+      .catch(() => setJustCreatedToolId(toolName));
+  }, [showResult, chatResponse]);
+
+  // When we have a forged/current tool name, load full tool for middle panel (execute form)
+  useEffect(() => {
+    const name = forgeToolName || justCreatedToolId;
+    if (!name) {
+      setCurrentToolForPanel(null);
+      return;
+    }
+    api
+      .getTool(name)
+      .then(setCurrentToolForPanel)
+      .catch(() => setCurrentToolForPanel(null));
+  }, [forgeToolName, justCreatedToolId]);
 
   const handleSubmit = useCallback(async (value: string) => {
     setLastPrompt(value);
     setLoading(true);
     setError(null);
     setShowResult(false);
-    setDemoStep("idle");
+    setDemoStep("checking");
+    setDiscoveryLogs([]);
+    setForgeToolName(null);
+    setForgeToolCode(null);
+    setForgeDocsMarkdown(null);
+    setJustCreatedToolId(null);
+    setMarketplaceSearchResults([]);
+    setReferences([]);
+    setCurrentToolForPanel(null);
+    chatSentRef.current = false;
+    pendingNavigateToolRef.current = null;
+    hasNavigatedToForgeRef.current = false;
+
+    const maxLogs = 50;
+    const pushLog = (log: DiscoveryLog) => {
+      // Capture tool name from "Tool 'X' registered in marketplace" so we can navigate even if chat response is late
+      if (log.tool_name && (log.message?.includes("registered") || log.message?.includes("registered in marketplace"))) {
+        pendingNavigateToolRef.current = log.tool_name;
+      }
+      const urlToAdd = log.url || (log.metadata && typeof log.metadata.url === "string" ? log.metadata.url : null);
+      if (urlToAdd) {
+        setReferences((prev) => {
+          if (prev.some((r) => r.url === urlToAdd)) return prev;
+          return [...prev, { url: urlToAdd, label: log.message?.slice(0, 80) }];
+        });
+      }
+      // Also extract URLs from message (e.g. "Crawled https://...")
+      const urlInMessage = log.message?.match(/https?:\/\/[^\s)]+/);
+      if (urlInMessage?.[0]) {
+        const u = urlInMessage[0];
+        setReferences((prev) => {
+          if (prev.some((r) => r.url === u)) return prev;
+          return [...prev, { url: u, label: log.message?.slice(0, 60) }];
+        });
+      }
+      const level = log.level === "success" ? "info" : log.level === "warning" ? "warn" : log.level;
+      const entry: LogEntry = {
+        id: log.id ?? `log-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        timestamp: log.timestamp ?? new Date().toISOString().slice(11, 23),
+        source: log.source ?? "system",
+        message: log.message ?? "",
+        level: level as LogEntry["level"],
+      };
+      setDiscoveryLogs((prev) => [...prev.slice(-(maxLogs - 1)), entry]);
+    };
 
     try {
-      // Call real API
-      const response = await api.chat({
-        message: value,
-        conversation_id: conversationId,
-        context: {
-          ui_mode: "command_center",
-        },
-      });
+      // Agent first checks marketplace: run search so user sees results in middle panel
+      api.searchTools(value, 10).then((r) => setMarketplaceSearchResults(r.tools)).catch(() => {});
 
-      // Store conversation ID for context
-      setConversationId(response.conversation_id);
-      setChatResponse(response);
+      const streamUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/discovery/stream`;
+      const es = new EventSource(streamUrl);
+      eventSourceRef.current = es;
 
-      // Animate through workflow steps
-      for (const step of response.workflow_steps) {
-        setDemoStep(step.step as "checking" | "discovering" | "forging" | "done");
-        // Wait for step duration (for animation)
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(step.duration_ms, 1000))
-        );
-      }
+      es.onmessage = (event: MessageEvent) => {
+        const raw = typeof event.data === "string" ? event.data.trim() : String(event.data ?? "").trim();
+        if (raw === "[DONE]") {
+          es.close();
+          eventSourceRef.current = null;
+          setLoading(false);
+          setDemoStep("done");
+          setShowResult(true);
+          const toolToShow = pendingNavigateToolRef.current;
+          if (toolToShow) {
+            hasNavigatedToForgeRef.current = true;
+            api
+              .getToolCode(toolToShow)
+              .then((codeRes) => {
+                setForgeToolName(codeRes.name);
+                setForgeToolCode(codeRes.code);
+                setJustCreatedToolId(toolToShow);
+              })
+              .catch(() => setJustCreatedToolId(toolToShow));
+          }
+          return;
+        }
+        let log: DiscoveryLog | null = null;
+        try {
+          log = typeof event.data === "object" && event.data !== null
+            ? (event.data as DiscoveryLog)
+            : JSON.parse(event.data as string);
+        } catch {
+          return;
+        }
+        if (!log || (log.source == null && log.message == null && log.conversation_id == null)) return;
+        // First event may be { type: "connected", conversation_id } — use it for POST /chat
+        const cid = log.conversation_id;
+        if (cid && !chatSentRef.current) {
+          chatSentRef.current = true;
+          setConversationId(cid);
+          setConversations((prev) =>
+            prev.some((c) => c.id === cid) ? prev : [...prev, { id: cid, prompt: value }]
+          );
+          setDemoStep("discovering");
+            api
+              .chat({
+                message: value,
+                conversation_id: cid,
+                context: { ui_mode: "command_center" },
+              })
+            .then((response) => {
+              setChatResponse(response);
+              if (response.tool_calls?.length) {
+                pendingNavigateToolRef.current = response.tool_calls[0].name;
+              }
+              setReusedTool(
+                (response.tool_calls?.length ?? 0) > 0 &&
+                  !(response.actions_logged ?? []).some((a) => a.title?.includes("MCP tool"))
+              );
+            })
+            .catch((err) => {
+              setError(err instanceof Error ? err.message : "Chat failed");
+            });
+        }
+        if (log.source != null || log.message != null) pushLog(log);
+      };
 
-      // Check if tools were reused (no new tools created)
-      setReusedTool(response.tool_calls.length > 0 && !response.actions_logged.some(a => a.title.includes('MCP tool')));
-
-      // Show results
-      setShowResult(true);
-      setDemoStep("done");
-
-      // Reset to idle after a moment
-      setTimeout(() => setDemoStep("idle"), 1000);
+      es.onerror = () => {
+        es.close();
+        eventSourceRef.current = null;
+        if (!chatSentRef.current) {
+          setError("Discovery stream failed. Is the backend running?");
+          setLoading(false);
+        }
+      };
     } catch (err) {
-      console.error('Chat error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to process command');
-      setDemoStep("idle");
-    } finally {
+      setError(err instanceof Error ? err.message : "Failed to start discovery stream");
       setLoading(false);
     }
-  }, [conversationId]);
+  }, []);
 
   return (
     <div className="flex h-screen flex-col bg-[var(--background)] text-[var(--foreground)]">
@@ -131,64 +266,97 @@ export function CommandCenter() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar: Live Discovery HUD (always visible when not full Forge) */}
-        {view !== "forge" && (
-          <aside className="hidden w-96 shrink-0 overflow-x-hidden border-r border-zinc-800 p-4 lg:block">
-            <LiveDiscoveryHUD maxLines={18} />
-          </aside>
+        {/* Left sidebar only when agent is generating a new tool (forge mode) */}
+        {view === "home" && forgeMode && (
+          <DashboardMiddlePanel
+            marketplaceSearchResults={marketplaceSearchResults}
+            marketplaceChecking={loading && demoStep === "checking"}
+            references={references}
+            currentTool={currentToolForPanel}
+            justCreatedToolId={justCreatedToolId}
+            onSelectTool={setCurrentToolForPanel}
+          />
         )}
-        {/* Main content */}
+        {/* Main: default = Marketplace center; forge = Code | References split */}
         <main className="scrollbar-hide flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">
-            {view === "home" && (
+            {view === "home" && !forgeMode && (
               <motion.div
-                key="home"
+                key="home-default"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="mx-auto flex max-w-2xl flex-col items-center gap-6 pt-16"
+                className="flex h-full flex-col gap-6"
               >
-                <div className="text-center">
+                <div className="shrink-0 text-center">
                   <h2 className="text-xl font-medium tracking-tight text-zinc-100 sm:text-2xl">
                     Agents that grow their own tools
                   </h2>
                   <p className="mt-2 text-sm text-zinc-500">
-                    One request. Discover → build → save → reuse.
+                    Discover → build → save → reuse.
                   </p>
                 </div>
-                {/* Compact flow indicator */}
-                <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-zinc-600">
-                  <span className={demoStep === "checking" || demoStep === "discovering" ? "text-zinc-400" : ""}>
-                    Marketplace
-                  </span>
-                  <span className="text-zinc-700">·</span>
-                  <span className={demoStep === "discovering" || demoStep === "forging" ? "text-zinc-400" : ""}>
-                    Discover
-                  </span>
-                  <span className="text-zinc-700">·</span>
-                  <span className={demoStep === "forging" ? "text-zinc-400" : ""}>
-                    MCP
-                  </span>
-                  <span className="text-zinc-700">·</span>
-                  <span>Save & run</span>
-                  <span className="text-zinc-700">·</span>
-                  <span>Reuse</span>
+                <div className="flex-1 min-h-0">
+                  <MarketplaceCenter
+                    onSelectTool={setCurrentToolForPanel}
+                    marketplaceChecking={loading && demoStep === "checking"}
+                  />
                 </div>
-                {demoStep === "checking" && (
-                  <p className="text-xs text-zinc-500">Checking marketplace…</p>
-                )}
-                {demoStep === "discovering" && (
-                  <p className="text-xs text-zinc-500">Discovering API…</p>
-                )}
-                <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />
+              </motion.div>
+            )}
+            {view === "home" && forgeMode && (
+              <motion.div
+                key="home-forge"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex h-full flex-col gap-4"
+              >
+                <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
+                  <div className="flex min-h-0 flex-col rounded-lg border border-zinc-700 bg-zinc-900/80 overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-zinc-700 bg-zinc-800/50 px-4 py-2">
+                      <FileCode className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <span className="text-sm font-medium text-zinc-300">Compiled tool code</span>
+                    </div>
+                    <pre className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap break-words">
+                      {forgeToolCode ?? "Loading…"}
+                    </pre>
+                  </div>
+                  <div className="flex min-h-0 flex-col rounded-lg border border-zinc-700 bg-zinc-900/80 overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-zinc-700 bg-zinc-800/50 px-4 py-2">
+                      <Globe className="h-4 w-4 text-orange-500 shrink-0" />
+                      <span className="text-sm font-medium text-zinc-300">References</span>
+                    </div>
+                    <div className="flex-1 overflow-auto p-4">
+                      {references.length === 0 ? (
+                        <p className="text-sm text-zinc-500">No references yet</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {references.map((ref, i) => (
+                            <li key={`${ref.url}-${i}`}>
+                              <a
+                                href={ref.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-start gap-2 rounded border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-blue-400 hover:bg-zinc-800 hover:underline"
+                              >
+                                <span className="line-clamp-2 break-all">{ref.label || ref.url}</span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 {error && (
                   <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
                     {error}
                   </div>
                 )}
-                {showResult && chatResponse && chatResponse.tool_calls.length > 0 && (
-                  <>
-                    {chatResponse.tool_calls.map((toolCall, idx) => (
+                {showResult && chatResponse && (chatResponse.tool_calls?.length ?? 0) > 0 && (
+                  <div className="space-y-4">
+                    {(chatResponse.tool_calls ?? []).map((toolCall, idx) => (
                       <ResultCard
                         key={idx}
                         title={chatResponse.response}
@@ -198,61 +366,8 @@ export function CommandCenter() {
                         reused={reusedTool}
                       />
                     ))}
-                  </>
-                )}
-                {showResult && chatResponse && chatResponse.tool_calls.length === 0 && (
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-400">
-                    {chatResponse.response}
                   </div>
                 )}
-              </motion.div>
-            )}
-
-            {view === "forge" && (
-              <motion.div
-                key="forge"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{
-                  opacity: 1,
-                  scale: showForgeTransition ? 1.02 : 1,
-                }}
-                exit={{ opacity: 0 }}
-                className="flex h-[calc(100vh-8rem)] flex-col gap-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="hidden lg:flex items-center gap-2 text-zinc-400">
-                    <span className="text-sm">Building tool from prompt:</span>
-                    <span className="font-mono text-zinc-300">
-                      &quot;{lastPrompt || "Get weather in San Francisco"}&quot;
-                    </span>
-                    <ChevronRight className="h-4 w-4" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setView("home")}
-                    className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700"
-                  >
-                    ← Back to Dashboard
-                  </button>
-                </div>
-                <div className="lg:hidden h-44 shrink-0">
-                  <LiveDiscoveryHUD maxLines={6} />
-                </div>
-                <div className="flex-1 min-h-0">
-                  <MCPForge showSelfHeal />
-                </div>
-              </motion.div>
-            )}
-
-            {view === "marketplace" && (
-              <motion.div
-                key="marketplace"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="h-[calc(100vh-8rem)]"
-              >
-                <ToolMarketplace justCreatedToolId={justCreatedToolId} />
               </motion.div>
             )}
 
@@ -265,18 +380,6 @@ export function CommandCenter() {
                 className="h-[calc(100vh-8rem)]"
               >
                 <TrustGovernanceLedger />
-              </motion.div>
-            )}
-
-            {view === "action" && (
-              <motion.div
-                key="action"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="h-[calc(100vh-8rem)]"
-              >
-                <ActionCenter />
               </motion.div>
             )}
 
@@ -294,10 +397,38 @@ export function CommandCenter() {
           </AnimatePresence>
         </main>
 
-        {/* Right rail: Action Center when on home/forge */}
+        {/* Right sidebar: Conversations (top) + chat input (bottom) when on home */}
         {view === "home" && (
-          <aside className="hidden w-72 shrink-0 border-l border-zinc-800 p-4 xl:block">
-            <ActionCenter maxItems={8} />
+          <aside className="hidden w-80 shrink-0 flex flex-col border-l border-zinc-800 xl:flex">
+            <div className="shrink-0 border-b border-zinc-800 p-3">
+              <p className="mb-2 text-xs font-medium text-zinc-500">Conversations</p>
+              <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
+                {conversations.length === 0 ? (
+                  <span className="shrink-0 text-xs text-zinc-600">No conversations yet</span>
+                ) : (
+                  conversations.map((conv) => (
+                    <button
+                      key={conv.id}
+                      type="button"
+                      onClick={() => setConversationId(conv.id)}
+                      className={`shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                        conversationId === conv.id
+                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                          : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+                      }`}
+                    >
+                      <span className="line-clamp-2 block max-w-[200px]">
+                        {conv.prompt ? (conv.prompt.length > 36 ? `${conv.prompt.slice(0, 36)}…` : conv.prompt) : conv.id.slice(0, 8)}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-h-0" />
+            <div className="shrink-0 border-t border-zinc-800 p-4">
+              <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />
+            </div>
           </aside>
         )}
       </div>

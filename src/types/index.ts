@@ -1,4 +1,4 @@
-export type ViewMode = "home" | "marketplace" | "forge" | "ledger" | "action" | "api";
+export type ViewMode = "home" | "ledger" | "api";
 
 export type ToolStatus = "UNVERIFIED" | "SANDBOXED" | "PROD-READY";
 

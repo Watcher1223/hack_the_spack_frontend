@@ -17,10 +17,17 @@ const DEFAULT_LEFT_PERCENT = 33;
 export function MCPForge({
   onRetry,
   showSelfHeal = false,
+  toolName = null,
+  toolCode = null,
+  docsMarkdown = null,
 }: {
   onRetry?: () => void;
   showSelfHeal?: boolean;
+  toolName?: string | null;
+  toolCode?: string | null;
+  docsMarkdown?: string | null;
 }) {
+  const displayOnly = Boolean(toolName && toolCode);
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +107,8 @@ export function MCPForge({
 
   return (
     <div className="flex h-full flex-col">
-      {/* URL Input Form */}
+      {/* URL Input Form (hidden when showing API-generated code) */}
+      {!displayOnly && (
       <form onSubmit={handleGenerate} className="border-b border-zinc-800 p-4">
         <div className="flex gap-2">
           <input
@@ -131,6 +139,7 @@ export function MCPForge({
           </button>
         </div>
       </form>
+      )}
 
       {/* Error Display */}
       {error && (
@@ -157,24 +166,33 @@ export function MCPForge({
             <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
               <FileCode className="h-4 w-4 text-blue-400" />
               <span className="font-medium text-zinc-300">Raw documentation</span>
-              {forgeData && (
+              {displayOnly && toolName && (
+                <span className="ml-auto text-xs text-zinc-500">Tool: {toolName}</span>
+              )}
+              {forgeData && !displayOnly && (
                 <span className="ml-auto text-xs text-zinc-500">
                   {forgeData.documentation.endpoints_found} endpoints
                 </span>
               )}
             </div>
             <div className="docs-markdown terminal-scroll flex-1 overflow-y-auto overflow-x-hidden p-4">
-              {!forgeData && !loading && (
+              {displayOnly && docsMarkdown && (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{docsMarkdown}</ReactMarkdown>
+              )}
+              {displayOnly && !docsMarkdown && (
+                <p className="text-sm text-zinc-500">Documentation from agent discovery.</p>
+              )}
+              {!displayOnly && !forgeData && !loading && (
                 <p className="text-center text-sm text-zinc-500 py-8">
                   Enter an API documentation URL above to generate an MCP tool
                 </p>
               )}
-              {loading && (
+              {!displayOnly && loading && (
                 <p className="text-center text-sm text-zinc-500 py-8">
                   Crawling documentation...
                 </p>
               )}
-              {forgeData && (
+              {!displayOnly && forgeData && (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -251,29 +269,49 @@ export function MCPForge({
             onMouseDown={() => setIsDragging(true)}
           />
 
-          {/* Right: Generated TypeScript */}
+          {/* Right: Generated code (API or Forge) */}
           <div className="flex flex-1 min-w-0 flex-col bg-[var(--forge-right)]">
             <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
               <Code2 className="h-4 w-4 text-purple-400" />
-              <span className="font-medium text-zinc-300">Generated MCP tool</span>
-              {forgeData && (
+              <span className="font-medium text-zinc-300">
+                {displayOnly ? `Generated: ${toolName}` : "Generated MCP tool"}
+              </span>
+              {forgeData && !displayOnly && (
                 <span className="ml-auto text-xs text-zinc-500">
                   {forgeData.metadata.generation_time_ms}ms
                 </span>
               )}
             </div>
-            <div className="terminal-scroll flex-1 overflow-y-auto overflow-x-hidden font-mono text-[0.7rem]">
-              {!forgeData && !loading && (
+            <div className="scrollbar-hide terminal-scroll flex-1 min-h-0 overflow-auto p-4 font-mono text-[0.7rem]">
+              {displayOnly && toolCode && (
+                <SyntaxHighlighter
+                  language="python"
+                  style={oneDark}
+                  customStyle={{
+                    margin: 0,
+                    padding: "0.75rem 0",
+                    background: "transparent",
+                    fontSize: "0.75rem",
+                    lineHeight: 1.6,
+                    overflowX: "auto",
+                  }}
+                  codeTagProps={{ style: { background: "transparent" } }}
+                  showLineNumbers={false}
+                >
+                  {toolCode}
+                </SyntaxHighlighter>
+              )}
+              {!displayOnly && !forgeData && !loading && (
                 <p className="text-center text-sm text-zinc-500 py-8">
                   Generated code will appear here
                 </p>
               )}
-              {loading && (
+              {!displayOnly && loading && (
                 <p className="text-center text-sm text-zinc-500 py-8">
                   Generating tool code...
                 </p>
               )}
-              {forgeData && (
+              {!displayOnly && forgeData && (
                 <SyntaxHighlighter
                   language="typescript"
                   style={oneDark}

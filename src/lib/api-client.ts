@@ -11,7 +11,8 @@ import type {
   DiscoveryLog
 } from '@/types/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+/** Universal Adapter API 2.0.0 — OAS 3.1, AI agent with tool marketplace and governance. See /openapi.json on the backend. */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
 
 export class UniversalAdapterAPI {
   private baseURL: string;
@@ -37,12 +38,14 @@ export class UniversalAdapterAPI {
     });
 
     if (!response.ok) {
-      const error: APIError = await response.json();
-      throw new APIClientError(
-        error.error.message,
-        error.error.code,
-        response.status
-      );
+      let errMsg = response.statusText;
+      try {
+        const body = await response.json();
+        if (body?.error?.message) errMsg = body.error.message;
+      } catch {
+        // ignore
+      }
+      throw new APIClientError(errMsg, 'CHAT_ERROR', response.status);
     }
 
     return await response.json();
@@ -95,6 +98,31 @@ export class UniversalAdapterAPI {
   // Tools
   // ============================================
 
+  /** Normalize backend tool shape to EnhancedTool (id, created_at, status, etc.) */
+  private normalizeTool(t: Record<string, unknown>): EnhancedTool {
+    const id = t._id != null ? String(t._id) : t.id != null ? String(t.id) : t.name != null ? String(t.name) : '';
+    const params = t.parameters && typeof t.parameters === 'object'
+      ? (t.parameters as EnhancedTool['parameters'])
+      : { type: 'object' as const, properties: {} as Record<string, unknown> };
+    return {
+      id,
+      name: t.name != null ? String(t.name) : 'unknown',
+      description: t.description != null ? String(t.description) : '',
+      status: (t.status === 'BETA' || t.status === 'DEPRECATED' ? t.status : 'PROD-READY') as EnhancedTool['status'],
+      category: t.category != null ? String(t.category) : 'general',
+      tags: Array.isArray(t.tags) ? (t.tags as string[]) : [],
+      verified: Boolean(t.verified),
+      usage_count: typeof t.usage_count === 'number' ? t.usage_count : 0,
+      parameters: params,
+      preview_snippet: t.preview_snippet != null ? String(t.preview_snippet) : undefined,
+      code: t.code != null ? String(t.code) : undefined,
+      created_at: t.created_at != null ? String(t.created_at) : undefined,
+      source_url: t.source_url != null ? String(t.source_url) : undefined,
+      mux_playback_id: t.mux_playback_id != null ? String(t.mux_playback_id) : undefined,
+      similarity_score: typeof t.similarity_score === 'number' ? t.similarity_score : undefined,
+    };
+  }
+
   /**
    * List all tools with enhanced UI fields
    */
@@ -107,7 +135,9 @@ export class UniversalAdapterAPI {
       throw new Error(`Failed to list tools: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    const raw = Array.isArray(data) ? data : (data.tools ?? []);
+    return raw.map((t: Record<string, unknown>) => this.normalizeTool(t));
   }
 
   /**
@@ -126,20 +156,46 @@ export class UniversalAdapterAPI {
       throw new Error(`Failed to search tools: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    const tools = (data.tools ?? []).map((t: Record<string, unknown>) => this.normalizeTool(t));
+    return { query: data.query ?? query, count: data.count ?? tools.length, tools };
   }
 
   /**
    * Get specific tool by name
    */
   async getTool(name: string): Promise<EnhancedTool> {
-    const response = await fetch(`${this.baseURL}/tools/${name}`);
+    const response = await fetch(`${this.baseURL}/tools/${encodeURIComponent(name)}`);
 
     if (!response.ok) {
       throw new Error(`Failed to get tool: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    const tool = data.tool ?? data;
+    return this.normalizeTool(typeof tool === 'object' && tool !== null ? tool : { name });
+  }
+
+  /**
+   * Get generated tool code (for display in MCP Forge / code block).
+   * GET /tools/{name}/code per API docs.
+   */
+  async getToolCode(toolName: string): Promise<{
+    success: boolean;
+    name: string;
+    description: string;
+    parameters?: Record<string, unknown>;
+    code: string;
+    language: string;
+    preview_snippet?: string;
+    created_at?: string;
+  }> {
+    const response = await fetch(`${this.baseURL}/tools/${encodeURIComponent(toolName)}/code`);
+    if (!response.ok) {
+      if (response.status === 404) throw new Error(`Tool or code not found: ${toolName}`);
+      throw new Error(`Failed to get tool code: ${response.statusText}`);
+    }
+    return response.json();
   }
 
   /**
