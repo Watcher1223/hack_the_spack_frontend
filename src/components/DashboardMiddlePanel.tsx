@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { formatExecutionResultForDisplay } from "@/lib/formatExecutionResult";
+import { getToolDocUrls } from "@/lib/tool-doc-urls";
 import type { EnhancedTool } from "@/types/api";
 
 export interface ReferenceItem {
@@ -269,18 +270,25 @@ export function DashboardMiddlePanel({
                     <p className="mt-0.5 text-xs text-zinc-500">{currentTool.description}</p>
                   )}
                 </div>
-                {((currentTool as any).api_reference_url || currentTool.source_url) && (
+                {getToolDocUrls(currentTool as any).length > 0 && (
                   <div className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-2">
-                    <p className="text-xs font-medium text-blue-300 mb-1">API Reference</p>
-                    <a
-                      href={(currentTool as any).api_reference_url || currentTool.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:underline break-all"
-                    >
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                      {(currentTool as any).api_reference_url || currentTool.source_url}
-                    </a>
+                    <p className="text-xs font-medium text-blue-300 mb-2">API & documentation</p>
+                    <ul className="space-y-1.5">
+                      {getToolDocUrls(currentTool as any).map(({ label, url }) => (
+                        <li key={url}>
+                          <span className="text-[10px] font-medium text-blue-400/90">{label}</span>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs text-blue-400 hover:underline break-all"
+                          >
+                            {url}
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 {currentTool.code && (

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { VerifiedCapability, ToolStatus } from "@/types";
 import { api } from "@/lib/api-client";
+import { getToolDocUrls } from "@/lib/tool-doc-urls";
 import type { EnhancedTool } from "@/types/api";
 
 const STATUS_CONFIG: Record<
@@ -133,16 +134,26 @@ function ToolPreviewDrawer({
                 {config.label}
               </span>
             </div>
-            {tool.sourceUrl && (
-              <a
-                href={tool.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-blue-400 hover:underline"
-              >
-                <ExternalLink className="h-4 w-4" />
-                View source docs
-              </a>
+            {getToolDocUrls(tool).length > 0 && (
+              <div className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-3">
+                <p className="text-xs font-medium text-blue-300 mb-2">API & documentation</p>
+                <ul className="space-y-2">
+                  {getToolDocUrls(tool).map(({ label, url }) => (
+                    <li key={url}>
+                      <span className="text-[10px] font-medium text-blue-400/90">{label}</span>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 flex items-center gap-2 text-sm text-blue-400 hover:underline break-all"
+                      >
+                        {url}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {tool.muxPlaybackId && (
               <a

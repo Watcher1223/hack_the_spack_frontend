@@ -12,7 +12,7 @@ import type {
 } from '@/types/api';
 
 /** Universal Adapter API 2.0.0 — OAS 3.1, AI agent with tool marketplace and governance. See /openapi.json on the backend. */
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://forge.api.opentest.live';
 
 export class UniversalAdapterAPI {
   private baseURL: string;
@@ -118,6 +118,9 @@ export class UniversalAdapterAPI {
       code: t.code != null ? String(t.code) : undefined,
       created_at: t.created_at != null ? String(t.created_at) : undefined,
       source_url: t.source_url != null ? String(t.source_url) : undefined,
+      api_reference_url: t.api_reference_url != null ? String(t.api_reference_url) : undefined,
+      documentation_url: t.documentation_url != null ? String(t.documentation_url) : undefined,
+      spec_url: t.spec_url != null ? String(t.spec_url) : undefined,
       mux_playback_id: t.mux_playback_id != null ? String(t.mux_playback_id) : undefined,
       similarity_score: typeof t.similarity_score === 'number' ? t.similarity_score : undefined,
     };

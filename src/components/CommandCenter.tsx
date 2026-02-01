@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Shield,
-  KeyRound,
+  Settings,
   Check,
   FileCode,
   Radio,
@@ -23,7 +23,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { TrustGovernanceLedger } from "./TrustGovernanceLedger";
-import { ApiAccess } from "./ApiAccess";
+import { Settings as SettingsView } from "./Settings";
 import { UniversalAdapterLogo } from "./UniversalAdapterLogo";
 import { CommandInput } from "./CommandInput";
 import { ResultCard } from "./ResultCard";
@@ -36,13 +36,14 @@ import type { ViewMode } from "@/types";
 import type { LogEntry } from "@/types";
 import { api } from "@/lib/api-client";
 import { formatExecutionResultForDisplay } from "@/lib/formatExecutionResult";
+import { getToolDocUrls } from "@/lib/tool-doc-urls";
 import type { ChatResponse, DiscoveryLog } from "@/types/api";
 import type { EnhancedTool } from "@/types/api";
 
 const TABS: { id: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "home", label: "Dashboard", icon: LayoutDashboard },
   { id: "ledger", label: "Audit Trail", icon: Shield },
-  { id: "api", label: "API", icon: KeyRound },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export function CommandCenter() {
@@ -234,7 +235,7 @@ export function CommandCenter() {
       // Agent first checks marketplace: run search so user sees results in middle panel
       api.searchTools(value, 10).then((r) => setMarketplaceSearchResults(r.tools)).catch(() => {});
 
-      const streamUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/discovery/stream`;
+      const streamUrl = `${process.env.NEXT_PUBLIC_API_URL || "https://forge.api.opentest.live"}/api/discovery/stream`;
       const es = new EventSource(streamUrl);
       eventSourceRef.current = es;
 
@@ -487,15 +488,15 @@ export function CommandCenter() {
               </motion.div>
             )}
 
-            {view === "api" && (
+            {view === "settings" && (
               <motion.div
-                key="api"
+                key="settings"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="scrollbar-hide overflow-y-auto pb-8"
               >
-                <ApiAccess />
+                <SettingsView />
               </motion.div>
             )}
           </AnimatePresence>
@@ -727,22 +728,29 @@ export function CommandCenter() {
                     )}
                   </div>
 
-                  {/* API Reference / Source URL */}
-                  {(selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url) && (
+                  {/* API & documentation – all related URLs */}
+                  {getToolDocUrls(selectedToolForDrawer).length > 0 && (
                     <div className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-4">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-3">
                         <Link2 className="h-4 w-4 text-blue-400" />
-                        <h4 className="text-sm font-medium text-blue-300">API Reference</h4>
+                        <h4 className="text-sm font-medium text-blue-300">API & documentation</h4>
                       </div>
-                      <a
-                        href={selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 hover:underline break-all"
-                      >
-                        {selectedToolForDrawer.api_reference_url || selectedToolForDrawer.source_url}
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
+                      <ul className="space-y-2">
+                        {getToolDocUrls(selectedToolForDrawer).map(({ label, url }) => (
+                          <li key={url}>
+                            <span className="text-xs font-medium text-blue-400/90">{label}</span>
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-0.5 flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 hover:underline break-all"
+                            >
+                              {url}
+                              <ExternalLink className="h-3 w-3 shrink-0" />
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 

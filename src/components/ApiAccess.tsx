@@ -3,7 +3,7 @@
 import { Key, Code2, Server, Zap, Copy, Check, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.universal-adapter.dev";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://forge.api.opentest.live";
 
 function generateApiKey(): string {
   const prefix = "ua_live_";

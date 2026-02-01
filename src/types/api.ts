@@ -71,6 +71,8 @@ export interface EnhancedTool {
   status: 'PROD-READY' | 'BETA' | 'DEPRECATED';
   source_url?: string;
   api_reference_url?: string; // API documentation URL (e.g., GitHub API docs)
+  documentation_url?: string; // Additional docs URL from backend
+  spec_url?: string; // OpenAPI/spec URL from backend
   preview_snippet?: string;
   category: string;
   tags: string[];
