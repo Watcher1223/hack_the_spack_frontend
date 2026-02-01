@@ -35,6 +35,7 @@ import { DraggableResizer } from "./DraggableResizer";
 import type { ViewMode } from "@/types";
 import type { LogEntry } from "@/types";
 import { api } from "@/lib/api-client";
+import { formatExecutionResultForDisplay } from "@/lib/formatExecutionResult";
 import type { ChatResponse, DiscoveryLog } from "@/types/api";
 import type { EnhancedTool } from "@/types/api";
 
@@ -71,7 +72,7 @@ export function CommandCenter() {
   const [toolExecutionError, setToolExecutionError] = useState<string | null>(null);
   const [toolParamInputs, setToolParamInputs] = useState<Record<string, any>>({});
   const [toolResultExpanded, setToolResultExpanded] = useState(true);
-  const [rightSidebarWidthPx, setRightSidebarWidthPx] = useState(320);
+  const [rightSidebarWidthPx, setRightSidebarWidthPx] = useState(380);
   const [leftSidebarWidthPx, setLeftSidebarWidthPx] = useState(288);
   const eventSourceRef = useRef<EventSource | null>(null);
   const chatSentRef = useRef(false);
@@ -506,16 +507,16 @@ export function CommandCenter() {
             <DraggableResizer
               width={rightSidebarWidthPx}
               onResize={setRightSidebarWidthPx}
-              minWidth={240}
-              maxWidth={560}
+              minWidth={320}
+              maxWidth={500}
               invert={true}
               className="hidden xl:block"
             />
             <aside
               className="hidden shrink-0 flex-col border-l border-zinc-800 xl:flex"
-              style={{ width: rightSidebarWidthPx, minWidth: 240, maxWidth: 560 }}
+              style={{ width: rightSidebarWidthPx, minWidth: 320, maxWidth: 500 }}
             >
-            <div className="shrink-0 border-b border-zinc-800 p-3">
+            <div className="shrink-0 border-b border-zinc-800 px-5 py-3">
               <p className="mb-2 text-xs font-medium text-zinc-500">Conversations</p>
               <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
                 {conversations.length === 0 ? (
@@ -541,7 +542,7 @@ export function CommandCenter() {
               </div>
             </div>
             {/* Chat: streamed messages above input (no section box) */}
-            <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto p-3">
+            <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto px-4 py-3 pr-6">
               {lastPrompt && (
                 <div className="mb-2 flex justify-end">
                   <div className="max-w-[90%] rounded-2xl rounded-br-md bg-emerald-500/20 px-3 py-2 text-sm text-zinc-100">
@@ -575,8 +576,8 @@ export function CommandCenter() {
                       animate={{ opacity: 1, y: 0 }}
                       className="mb-2 flex justify-start"
                     >
-                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-blue-800/40 bg-blue-900/20 px-3 py-2 text-sm">
-                        <span className="text-[10px] font-medium text-blue-400">Calling {event.tool_name}</span>
+                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-zinc-700/50 bg-zinc-800/80 px-3 py-2 text-sm">
+                        <span className="text-[10px] font-medium text-zinc-400">Calling {event.tool_name}</span>
                         {event.arguments && Object.keys(event.arguments).length > 0 && (
                           <pre className="mt-1 overflow-x-auto rounded bg-zinc-950/50 p-2 text-[10px] text-zinc-400">
                             {JSON.stringify(event.arguments, null, 2)}
@@ -595,15 +596,9 @@ export function CommandCenter() {
                       animate={{ opacity: 1, y: 0 }}
                       className="mb-2 flex justify-start"
                     >
-                      <div
-                        className={`max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-sm ${
-                          isSuccess
-                            ? "border border-emerald-800/40 bg-emerald-900/20"
-                            : "border border-red-800/40 bg-red-900/20"
-                        }`}
-                      >
+                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-zinc-700/50 bg-zinc-800/80 px-3 py-2 text-sm">
                         <span
-                          className={`text-[10px] font-medium ${isSuccess ? "text-emerald-400" : "text-red-400"}`}
+                          className={`text-[10px] font-medium ${isSuccess ? "text-zinc-400" : "text-red-400"}`}
                         >
                           {event.tool_name} · {event.status}
                         </span>
@@ -620,7 +615,7 @@ export function CommandCenter() {
                 return null;
               })}
             </div>
-            <div className="shrink-0 border-t border-zinc-800 p-4">
+            <div className="shrink-0 border-t border-zinc-800 px-5 py-4 pr-6">
               <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />
             </div>
           </aside>
@@ -832,6 +827,12 @@ export function CommandCenter() {
                               <select
                                 value={toolParamInputs[name]?.toString() || 'false'}
                                 onChange={(e) => handleToolParamChange(name, e.target.value, param.type)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleToolExecute();
+                                  }
+                                }}
                                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
                               >
                                 <option value="false">false</option>
@@ -842,6 +843,12 @@ export function CommandCenter() {
                                 type={param.type === 'integer' || param.type === 'number' ? 'number' : 'text'}
                                 value={toolParamInputs[name] ?? ''}
                                 onChange={(e) => handleToolParamChange(name, e.target.value, param.type)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleToolExecute();
+                                  }
+                                }}
                                 placeholder={param.description || `Enter ${name}`}
                                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-emerald-500 focus:outline-none"
                               />
@@ -874,47 +881,57 @@ export function CommandCenter() {
                       </button>
 
                       {/* Execution Result */}
-                      {toolExecutionResult && (
-                        <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-900/20 p-4">
-                          <button
-                            type="button"
-                            onClick={() => setToolResultExpanded((e) => !e)}
-                            className="flex w-full items-center justify-between gap-2 text-left"
-                          >
-                            <div className="flex items-center gap-2">
-                              <CheckCircle className="h-4 w-4 text-emerald-400" />
-                              <h5 className="text-sm font-medium text-emerald-300">Execution Result</h5>
-                            </div>
-                            {toolResultExpanded ? (
-                              <ChevronUp className="h-4 w-4 shrink-0 text-zinc-500" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
-                            )}
-                          </button>
-                          {toolExecutionResult.execution_metadata && (
-                            <div className="mb-3 mt-2 flex flex-wrap gap-3 text-xs text-zinc-400">
-                              <div>
-                                Duration: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.duration_ms}ms</span>
+                      {toolExecutionResult && (() => {
+                        const resultPayload = toolExecutionResult.result;
+                        const humanReadable = formatExecutionResultForDisplay(resultPayload);
+                        return (
+                          <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-900/20 p-4">
+                            <button
+                              type="button"
+                              onClick={() => setToolResultExpanded((e) => !e)}
+                              className="flex w-full items-center justify-between gap-2 text-left"
+                            >
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-emerald-400" />
+                                <h5 className="text-sm font-medium text-emerald-300">Execution Result</h5>
                               </div>
-                              {toolExecutionResult.execution_metadata.cached && (
-                                <div className="text-blue-400">✓ Cached</div>
+                              {toolResultExpanded ? (
+                                <ChevronUp className="h-4 w-4 shrink-0 text-zinc-500" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
                               )}
-                              {toolExecutionResult.execution_metadata.api_calls_made !== undefined && (
+                            </button>
+                            {toolExecutionResult.execution_metadata && (
+                              <div className="mb-2 mt-2 flex flex-wrap gap-3 text-xs text-zinc-400">
                                 <div>
-                                  API Calls: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.api_calls_made}</span>
+                                  Duration: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.duration_ms}ms</span>
                                 </div>
-                              )}
-                            </div>
-                          )}
-                          {toolResultExpanded && (
-                            <div className="rounded border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto max-h-80 overflow-y-auto">
-                              <pre className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words">
-                                {JSON.stringify(toolExecutionResult.result, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                                {toolExecutionResult.execution_metadata.cached && (
+                                  <div className="text-blue-400">✓ Cached</div>
+                                )}
+                                {toolExecutionResult.execution_metadata.api_calls_made !== undefined && (
+                                  <div>
+                                    API Calls: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.api_calls_made}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {humanReadable && (
+                              <p className="mb-3 text-sm leading-snug text-zinc-200">
+                                {humanReadable}
+                              </p>
+                            )}
+                            {toolResultExpanded && (
+                              <div className="rounded border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto max-h-80 overflow-y-auto">
+                                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Raw result</p>
+                                <pre className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words">
+                                  {JSON.stringify(resultPayload, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Execution Error */}
                       {toolExecutionError && (

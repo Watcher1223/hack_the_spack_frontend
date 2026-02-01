@@ -13,6 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { formatExecutionResultForDisplay } from "@/lib/formatExecutionResult";
 import type { EnhancedTool } from "@/types/api";
 
 export interface ReferenceItem {
@@ -309,6 +310,12 @@ export function DashboardMiddlePanel({
                             onChange={(e) =>
                               setParamValues((prev) => ({ ...prev, [key]: e.target.value }))
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleExecute();
+                              }
+                            }}
                             placeholder={
                               typeof schema === "object" && schema && "description" in schema
                                 ? String((schema as { description?: string }).description ?? "")
@@ -335,31 +342,41 @@ export function DashboardMiddlePanel({
                     <p className="text-xs text-red-400">{executeError}</p>
                   </div>
                 )}
-                {executeResult != null && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded border border-zinc-700 bg-zinc-900/80 overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setResultExpanded((e) => !e)}
-                      className="flex w-full items-center justify-between gap-2 p-2 text-left"
+                {executeResult != null && (() => {
+                  const humanReadable = formatExecutionResultForDisplay(executeResult);
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded border border-zinc-700 bg-zinc-900/80 overflow-hidden"
                     >
-                      <span className="text-xs font-medium text-zinc-500">Result</span>
-                      {resultExpanded ? (
-                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                      ) : (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <button
+                        type="button"
+                        onClick={() => setResultExpanded((e) => !e)}
+                        className="flex w-full items-center justify-between gap-2 p-2 text-left"
+                      >
+                        <span className="text-xs font-medium text-zinc-500">Result</span>
+                        {resultExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                        )}
+                      </button>
+                      {resultExpanded && (
+                        <>
+                          {humanReadable && (
+                            <p className="px-2 pb-2 text-xs leading-snug text-zinc-200">
+                              {humanReadable}
+                            </p>
+                          )}
+                          <pre className="max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words border-t border-zinc-700 p-2 pt-2 text-[10px] text-zinc-500">
+                            Raw: {JSON.stringify(executeResult, null, 2)}
+                          </pre>
+                        </>
                       )}
-                    </button>
-                    {resultExpanded && (
-                      <pre className="max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-2 pt-0 text-xs text-zinc-300">
-                        {JSON.stringify(executeResult, null, 2)}
-                      </pre>
-                    )}
-                  </motion.div>
-                )}
+                    </motion.div>
+                  );
+                })()}
               </div>
             )}
           </section>
