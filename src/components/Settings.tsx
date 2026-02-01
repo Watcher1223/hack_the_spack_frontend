@@ -10,8 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Loader2,
 } from "lucide-react";
 import { ApiAccess } from "./ApiAccess";
+import { api } from "@/lib/api-client";
+import type { EnhancedTool } from "@/types/api";
 
 /** Mock doc-update event for timeline slider (replace with API when available) */
 export interface DocUpdateEvent {
@@ -37,10 +40,48 @@ export function Settings() {
   const [activeSection, setActiveSection] = useState<(typeof SECTION_IDS)[number]>("api");
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-  const [alertsToolUpdates, setAlertsToolUpdates] = useState(true);
+  const [trackedToolIds, setTrackedToolIds] = useState<string[]>([]);
   const [alertsDocUpdates, setAlertsDocUpdates] = useState(true);
   const [alertsNewTools, setAlertsNewTools] = useState(false);
+  const [availableTools, setAvailableTools] = useState<EnhancedTool[]>([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [toolSearch, setToolSearch] = useState("");
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+
+  // Load tools when user opens the alerts tab so they can select which to track
+  useEffect(() => {
+    if (activeSection !== "alerts" || availableTools.length > 0) return;
+    let cancelled = false;
+    setToolsLoading(true);
+    api
+      .listTools(100, 0)
+      .then((tools) => {
+        if (!cancelled) setAvailableTools(tools);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableTools([]);
+      })
+      .finally(() => {
+        if (!cancelled) setToolsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, availableTools.length]);
+
+  const toggleToolTracking = (toolName: string) => {
+    setTrackedToolIds((prev) =>
+      prev.includes(toolName) ? prev.filter((id) => id !== toolName) : [...prev, toolName]
+    );
+  };
+
+  const filteredTools = toolSearch.trim()
+    ? availableTools.filter(
+        (t) =>
+          t.name.toLowerCase().includes(toolSearch.toLowerCase()) ||
+          (t.description ?? "").toLowerCase().includes(toolSearch.toLowerCase())
+      )
+    : availableTools;
 
   const scrollTimeline = (dir: "left" | "right") => {
     const el = timelineScrollRef.current;
@@ -50,7 +91,7 @@ export function Settings() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-10 pb-12">
+    <div className="w-full max-w-full space-y-10 pb-12">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-800 ring-1 ring-zinc-700">
           <SettingsIcon className="h-5 w-5 text-zinc-400" />
@@ -61,7 +102,7 @@ export function Settings() {
         </div>
       </div>
 
-      {/* In-page nav */}
+      {/* Tab nav — only the active section’s content is shown below */}
       <nav className="flex flex-wrap gap-2 border-b border-zinc-800 pb-4">
         {[
           { id: "api" as const, label: "API access", icon: KeyRound },
@@ -71,13 +112,10 @@ export function Settings() {
           <button
             key={id}
             type="button"
-            onClick={() => {
-              setActiveSection(id);
-              document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
+            onClick={() => setActiveSection(id)}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               activeSection === id
-                ? "bg-zinc-800 text-zinc-100"
+                ? "bg-zinc-800 text-zinc-100 ring-1 ring-zinc-600"
                 : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300"
             }`}
           >
@@ -87,21 +125,24 @@ export function Settings() {
         ))}
       </nav>
 
-      {/* Section: API access */}
-      <section id="api" className="scroll-mt-6">
-        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-200">
-          <KeyRound className="h-5 w-5 text-zinc-400" />
-          API access
-        </h2>
-        <ApiAccess />
-      </section>
+      {/* Section: API access — shown only when this tab is active */}
+      {activeSection === "api" && (
+        <section id="api" className="scroll-mt-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-200">
+            <KeyRound className="h-5 w-5 text-zinc-400" />
+            API access
+          </h2>
+          <ApiAccess />
+        </section>
+      )}
 
-      {/* Section: Subscribe for alerts */}
-      <section id="alerts" className="scroll-mt-6">
-        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-200">
-          <Bell className="h-5 w-5 text-zinc-400" />
-          Subscribe for alerts
-        </h2>
+      {/* Section: Subscribe for alerts — shown only when this tab is active */}
+      {activeSection === "alerts" && (
+        <section id="alerts" className="scroll-mt-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-200">
+            <Bell className="h-5 w-5 text-zinc-400" />
+            Subscribe for alerts
+          </h2>
         <p className="mb-4 text-sm text-zinc-400">
           Get email when tool APIs or documentation change so you can track live updates.
         </p>
@@ -128,17 +169,59 @@ export function Settings() {
                   Subscribe
                 </button>
               </div>
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-4">
                 <p className="text-xs font-medium text-zinc-500">Notify me about</p>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
-                  <input
-                    type="checkbox"
-                    checked={alertsToolUpdates}
-                    onChange={(e) => setAlertsToolUpdates(e.target.checked)}
-                    className="rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500"
-                  />
-                  Tool API updates
-                </label>
+
+                <div>
+                  <p className="mb-2 text-xs font-medium text-zinc-500">Tool updates (select tools to track)</p>
+                  {toolsLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-sm text-zinc-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading tools…
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="search"
+                        value={toolSearch}
+                        onChange={(e) => setToolSearch(e.target.value)}
+                        placeholder="Search tools…"
+                        className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-600 focus:outline-none"
+                      />
+                      <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
+                        {filteredTools.length === 0 ? (
+                          <p className="py-3 text-center text-xs text-zinc-500">
+                            {availableTools.length === 0 ? "No tools available." : "No tools match your search."}
+                          </p>
+                        ) : (
+                          filteredTools.map((tool) => (
+                            <label
+                              key={tool.name}
+                              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={trackedToolIds.includes(tool.name)}
+                                onChange={() => toggleToolTracking(tool.name)}
+                                className="rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500"
+                              />
+                              <span className="font-mono text-zinc-300">{tool.name}</span>
+                              {tool.description && (
+                                <span className="truncate text-xs text-zinc-500">{tool.description}</span>
+                              )}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      {trackedToolIds.length > 0 && (
+                        <p className="mt-1.5 text-xs text-zinc-500">
+                          {trackedToolIds.length} tool{trackedToolIds.length !== 1 ? "s" : ""} selected for updates
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
                   <input
                     type="checkbox"
@@ -162,7 +245,12 @@ export function Settings() {
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3 text-sm text-emerald-300">
               <Check className="h-4 w-4 shrink-0" />
-              <span>Subscribed with {email}. We’ll email you about tool API and doc updates.</span>
+              <span>
+                Subscribed with {email}. We’ll email you about{" "}
+                {trackedToolIds.length > 0
+                  ? `updates for ${trackedToolIds.length} tool${trackedToolIds.length !== 1 ? "s" : ""}`
+                  : "doc and new-tool updates"}.
+              </span>
               <button
                 type="button"
                 onClick={() => setSubscribed(false)}
@@ -173,10 +261,12 @@ export function Settings() {
             </div>
           )}
         </div>
-      </section>
+        </section>
+      )}
 
-      {/* Section: Documentation updated timeline (slider) */}
-      <section id="timeline" className="scroll-mt-6">
+      {/* Section: Doc timeline — shown only when this tab is active */}
+      {activeSection === "timeline" && (
+        <section id="timeline" className="scroll-mt-6">
         <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-200">
           <FileText className="h-5 w-5 text-zinc-400" />
           Documentation updated timeline
@@ -184,7 +274,7 @@ export function Settings() {
         <p className="mb-4 text-sm text-zinc-400">
           Browse recent API and documentation updates. Slide to see more.
         </p>
-        <div className="relative">
+        <div className="relative w-full">
           <button
             type="button"
             onClick={() => scrollTimeline("left")}
@@ -203,7 +293,7 @@ export function Settings() {
           </button>
           <div
             ref={timelineScrollRef}
-            className="scrollbar-hide flex gap-4 overflow-x-auto pb-2 pt-1"
+            className="scrollbar-hide flex w-full gap-4 overflow-x-auto pb-2 pt-1"
             style={{ scrollSnapType: "x proximity" }}
           >
             {MOCK_DOC_UPDATES.map((event, index) => (
@@ -240,7 +330,8 @@ export function Settings() {
             ))}
           </div>
         </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }

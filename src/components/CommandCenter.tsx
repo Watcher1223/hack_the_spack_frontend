@@ -514,7 +514,7 @@ export function CommandCenter() {
               className="hidden xl:block"
             />
             <aside
-              className="hidden shrink-0 flex-col border-l border-zinc-800 xl:flex"
+              className="hidden min-h-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 xl:flex"
               style={{ width: rightSidebarWidthPx, minWidth: 320, maxWidth: 500 }}
             >
             <div className="shrink-0 border-b border-zinc-800 px-5 py-3">
@@ -542,7 +542,7 @@ export function CommandCenter() {
                 )}
               </div>
             </div>
-            {/* Chat: streamed messages above input (no section box) */}
+            {/* Chat: streamed messages above input — scrollable, no gray bubbles */}
             <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto px-4 py-3 pr-6">
               {lastPrompt && (
                 <div className="mb-2 flex justify-end">
@@ -560,7 +560,7 @@ export function CommandCenter() {
                       animate={{ opacity: 1, y: 0 }}
                       className="mb-2 flex justify-start"
                     >
-                      <div className="max-w-[90%] rounded-2xl rounded-bl-md bg-zinc-800/80 px-3 py-2 text-sm text-zinc-200">
+                      <div className="max-w-[90%] text-sm text-zinc-200">
                         {event.iteration != null && (
                           <span className="mb-1 block text-[10px] text-zinc-500">Iteration {event.iteration}</span>
                         )}
@@ -570,21 +570,37 @@ export function CommandCenter() {
                   );
                 }
                 if (event.type === "tool_call") {
+                  const jsonStr = event.arguments && Object.keys(event.arguments).length > 0
+                    ? JSON.stringify(event.arguments, null, 2)
+                    : "";
                   return (
                     <motion.div
                       key={idx}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-2 flex justify-start"
+                      className="mb-3 flex flex-col items-start"
                     >
-                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-zinc-700/50 bg-zinc-800/80 px-3 py-2 text-sm">
-                        <span className="text-[10px] font-medium text-zinc-400">Calling {event.tool_name}</span>
-                        {event.arguments && Object.keys(event.arguments).length > 0 && (
-                          <pre className="mt-1 overflow-x-auto rounded bg-zinc-950/50 p-2 text-[10px] text-zinc-400">
-                            {JSON.stringify(event.arguments, null, 2)}
-                          </pre>
-                        )}
-                      </div>
+                      <span className="mb-1 block text-sm font-medium text-zinc-200">Calling {event.tool_name}</span>
+                      {jsonStr ? (
+                        <div className="w-full max-w-full overflow-x-auto rounded text-xs">
+                          <SyntaxHighlighter
+                            language="json"
+                            style={oneDark}
+                            customStyle={{
+                              margin: 0,
+                              padding: "0.5rem 0.75rem",
+                              background: "transparent",
+                              fontSize: "0.7rem",
+                              borderRadius: "0.375rem",
+                            }}
+                            codeTagProps={{ style: { background: "transparent" } }}
+                            showLineNumbers={false}
+                            PreTag="div"
+                          >
+                            {jsonStr}
+                          </SyntaxHighlighter>
+                        </div>
+                      ) : null}
                     </motion.div>
                   );
                 }
@@ -595,21 +611,34 @@ export function CommandCenter() {
                       key={idx}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-2 flex justify-start"
+                      className="mb-3 flex flex-col items-start"
                     >
-                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-zinc-700/50 bg-zinc-800/80 px-3 py-2 text-sm">
-                        <span
-                          className={`text-[10px] font-medium ${isSuccess ? "text-zinc-400" : "text-red-400"}`}
-                        >
-                          {event.tool_name} · {event.status}
-                        </span>
-                        {event.result_preview && (
-                          <pre className="mt-1 overflow-x-auto rounded bg-zinc-950/50 p-2 text-[10px] text-zinc-400">
+                      <span
+                        className={`mb-1 block text-sm font-medium ${isSuccess ? "text-zinc-200" : "text-red-400"}`}
+                      >
+                        {event.tool_name} · {event.status}
+                      </span>
+                      {event.result_preview && (
+                        <div className="w-full max-w-full overflow-x-auto rounded text-xs">
+                          <SyntaxHighlighter
+                            language="python"
+                            style={oneDark}
+                            customStyle={{
+                              margin: 0,
+                              padding: "0.5rem 0.75rem",
+                              background: "transparent",
+                              fontSize: "0.7rem",
+                              borderRadius: "0.375rem",
+                            }}
+                            codeTagProps={{ style: { background: "transparent" } }}
+                            showLineNumbers={false}
+                            PreTag="div"
+                          >
                             {event.result_preview}
-                          </pre>
-                        )}
-                        {event.error && <p className="mt-1 text-[10px] text-red-400">{event.error}</p>}
-                      </div>
+                          </SyntaxHighlighter>
+                        </div>
+                      )}
+                      {event.error && <p className="mt-1 text-xs text-red-400">{event.error}</p>}
                     </motion.div>
                   );
                 }
@@ -675,6 +704,20 @@ export function CommandCenter() {
               </div>
               <div className="terminal-scroll flex-1 overflow-y-auto p-6">
                 <div className="space-y-6">
+                  {/* View audit trail — links to Audit Trail page */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView("ledger");
+                      setSelectedToolForDrawer(null);
+                    }}
+                    className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+                  >
+                    <Shield className="h-4 w-4" />
+                    View audit trail
+                    <ExternalLink className="h-3.5 w-3 opacity-70" />
+                  </button>
+
                   {/* Header */}
                   <div>
                     <div className="flex items-start justify-between gap-4">
