@@ -81,6 +81,7 @@ export function CommandCenter() {
   const chatSentRef = useRef(false);
   const pendingNavigateToolRef = useRef<string | null>(null);
   const hasNavigatedToForgeRef = useRef(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   /** When agent generates a new tool, switch to forge layout: marketplace on left, code + refs in center */
   const forgeMode = !!(
@@ -112,6 +113,16 @@ export function CommandCenter() {
       setToolExecutionError(null);
     }
   }, [selectedToolForDrawer]);
+
+  // Keep chat scrolled to bottom so new messages stay above the input
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [streamingEvents, lastPrompt, loading]);
 
   const handleToolExecute = useCallback(async () => {
     if (!selectedToolForDrawer) return;
@@ -354,7 +365,7 @@ export function CommandCenter() {
         </nav>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left sidebar only when agent is generating a new tool (forge mode) */}
         {view === "home" && forgeMode && (
           <>
@@ -516,7 +527,7 @@ export function CommandCenter() {
               className="hidden xl:block"
             />
             <aside
-              className="hidden min-h-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 xl:flex"
+              className="hidden min-h-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 xl:flex xl:h-full"
               style={{ width: rightSidebarWidthPx, minWidth: 320, maxWidth: 500 }}
             >
             <div className="shrink-0 border-b border-zinc-800 px-5 py-3">
@@ -545,7 +556,10 @@ export function CommandCenter() {
               </div>
             </div>
             {/* Chat: streamed messages above input — scrollable, no gray bubbles */}
-            <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto px-4 py-3 pr-6">
+            <div
+              ref={chatScrollRef}
+              className="scrollbar-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 pr-6"
+            >
               {lastPrompt && (
                 <div className="mb-2 flex justify-end">
                   <div className="max-w-[90%] rounded-2xl rounded-br-md bg-emerald-500/20 px-3 py-2 text-sm text-zinc-100">

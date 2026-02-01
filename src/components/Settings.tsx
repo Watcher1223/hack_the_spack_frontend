@@ -26,6 +26,9 @@ export interface DocUpdateEvent {
 }
 
 const MOCK_DOC_UPDATES: DocUpdateEvent[] = [
+  { id: "spacex-1", toolName: "get_spacex_launch_data (v1)", label: "Initial release — next/upcoming launches", date: "2025-01-30", type: "new_version" },
+  { id: "spacex-2", toolName: "get_spacex_launch_data (v2)", label: "Added past launches and launch details", date: "2025-01-29", type: "api_update" },
+  { id: "spacex-3", toolName: "get_spacex_launch_data (v3)", label: "Docs updated — full SpaceX API coverage", date: "2025-01-28", type: "docs_update" },
   { id: "1", toolName: "OpenWeatherMap", label: "API docs updated", date: "2025-01-28", type: "docs_update" },
   { id: "2", toolName: "Stripe", label: "New API version", date: "2025-01-27", type: "api_update" },
   { id: "3", toolName: "GitHub", label: "REST API changelog", date: "2025-01-25", type: "docs_update" },
