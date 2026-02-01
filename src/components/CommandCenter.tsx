@@ -37,6 +37,8 @@ import type { LogEntry } from "@/types";
 import { api } from "@/lib/api-client";
 import { formatExecutionResultForDisplay } from "@/lib/formatExecutionResult";
 import { getToolDocUrls } from "@/lib/tool-doc-urls";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatResponse, DiscoveryLog } from "@/types/api";
 import type { EnhancedTool } from "@/types/api";
 
@@ -558,18 +560,24 @@ export function CommandCenter() {
                       key={idx}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-2 flex justify-start"
+                      className="mb-2 flex justify-start gap-2"
                     >
-                      <div className="max-w-[90%] text-sm text-zinc-200">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/25 text-emerald-300" aria-hidden>
+                        <Check className="h-3 w-3" />
+                      </span>
+                      <div className="chat-markdown min-w-0 max-w-[90%] text-sm text-zinc-200">
                         {event.iteration != null && (
                           <span className="mb-1 block text-[10px] text-zinc-500">Iteration {event.iteration}</span>
                         )}
-                        <p className="leading-relaxed">{event.content}</p>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content ?? ""}</ReactMarkdown>
                       </div>
                     </motion.div>
                   );
                 }
                 if (event.type === "tool_call") {
+                  const hasResult = streamingEvents
+                    .slice(idx + 1)
+                    .some((e) => e.type === "tool_result" && e.tool_name === event.tool_name);
                   const jsonStr = event.arguments && Object.keys(event.arguments).length > 0
                     ? JSON.stringify(event.arguments, null, 2)
                     : "";
@@ -578,22 +586,36 @@ export function CommandCenter() {
                       key={idx}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-3 flex flex-col items-start"
+                      className="mb-3 flex flex-col items-start gap-2"
                     >
-                      <span className="mb-1 block text-sm font-medium text-zinc-200">Calling {event.tool_name}</span>
+                      <div className="flex items-center gap-2">
+                        {hasResult ? (
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/25 text-emerald-300" aria-hidden>
+                            <Check className="h-3 w-3" />
+                          </span>
+                        ) : (
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-700/80 text-zinc-400" aria-hidden>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          </span>
+                        )}
+                        <span className="text-sm font-medium text-zinc-200">Calling {event.tool_name}</span>
+                      </div>
                       {jsonStr ? (
-                        <div className="w-full max-w-full overflow-x-auto rounded text-xs">
+                        <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden rounded text-xs pl-7 [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words">
                           <SyntaxHighlighter
                             language="json"
                             style={oneDark}
+                            wrapLongLines
                             customStyle={{
                               margin: 0,
                               padding: "0.5rem 0.75rem",
                               background: "transparent",
                               fontSize: "0.7rem",
                               borderRadius: "0.375rem",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
                             }}
-                            codeTagProps={{ style: { background: "transparent" } }}
+                            codeTagProps={{ style: { background: "transparent", whiteSpace: "pre-wrap", wordBreak: "break-word" } }}
                             showLineNumbers={false}
                             PreTag="div"
                           >
@@ -611,26 +633,40 @@ export function CommandCenter() {
                       key={idx}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mb-3 flex flex-col items-start"
+                      className="mb-3 flex flex-col items-start gap-2"
                     >
-                      <span
-                        className={`mb-1 block text-sm font-medium ${isSuccess ? "text-zinc-200" : "text-red-400"}`}
-                      >
-                        {event.tool_name} · {event.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {isSuccess ? (
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/25 text-emerald-300" aria-hidden>
+                            <Check className="h-3 w-3" />
+                          </span>
+                        ) : (
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400" aria-hidden>
+                            <XCircle className="h-3 w-3" />
+                          </span>
+                        )}
+                        <span
+                          className={`text-sm font-medium ${isSuccess ? "text-zinc-200" : "text-red-400"}`}
+                        >
+                          {event.tool_name} · {event.status}
+                        </span>
+                      </div>
                       {event.result_preview && (
-                        <div className="w-full max-w-full overflow-x-auto rounded text-xs">
+                        <div className="w-full max-w-full min-w-0 overflow-x-auto overflow-y-hidden rounded text-xs pl-7 [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words">
                           <SyntaxHighlighter
                             language="python"
                             style={oneDark}
+                            wrapLongLines
                             customStyle={{
                               margin: 0,
                               padding: "0.5rem 0.75rem",
                               background: "transparent",
                               fontSize: "0.7rem",
                               borderRadius: "0.375rem",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
                             }}
-                            codeTagProps={{ style: { background: "transparent" } }}
+                            codeTagProps={{ style: { background: "transparent", whiteSpace: "pre-wrap", wordBreak: "break-word" } }}
                             showLineNumbers={false}
                             PreTag="div"
                           >
@@ -638,12 +674,24 @@ export function CommandCenter() {
                           </SyntaxHighlighter>
                         </div>
                       )}
-                      {event.error && <p className="mt-1 text-xs text-red-400">{event.error}</p>}
+                      {event.error && <p className="mt-1 pl-7 text-xs text-red-400">{event.error}</p>}
                     </motion.div>
                   );
                 }
                 return null;
               })}
+              {loading && streamingEvents.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="mb-2 flex items-center gap-2 text-sm text-zinc-500"
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-700/80 text-zinc-400">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  </span>
+                  <span>Processing…</span>
+                </motion.div>
+              )}
             </div>
             <div className="shrink-0 border-t border-zinc-800 px-5 py-4 pr-6">
               <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />

@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Cloud, MapPin, Thermometer, Droplets } from "lucide-react";
 
 interface ResultCardProps {
@@ -32,9 +34,11 @@ export function ResultCard({
       className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900/80 p-5 shadow-xl"
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-zinc-100">{title}</h3>
-          {subtitle && <p className="text-sm text-zinc-500">{subtitle}</p>}
+        <div className="min-w-0 flex-1">
+          <div className="chat-markdown font-semibold text-zinc-100 [&>p]:mb-0 [&>p:first-child]:mt-0">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{title}</ReactMarkdown>
+          </div>
+          {subtitle && <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>}
         </div>
         {reused && (
           <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
