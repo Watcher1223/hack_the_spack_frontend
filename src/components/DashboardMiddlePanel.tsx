@@ -48,6 +48,7 @@ export function DashboardMiddlePanel({
   const [showRefs, setShowRefs] = useState(true);
   const [showMarketplace, setShowMarketplace] = useState(true);
   const [showTool, setShowTool] = useState(true);
+  const [resultExpanded, setResultExpanded] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +109,7 @@ export function DashboardMiddlePanel({
       setExecuteResult(
         typeof res.result === "object" && res.result != null ? res.result : { result: res }
       );
+      setResultExpanded(true);
     } catch (err) {
       setExecuteError(err instanceof Error ? err.message : "Execution failed");
     } finally {
@@ -116,7 +118,7 @@ export function DashboardMiddlePanel({
   }, [currentTool, paramValues, required]);
 
   return (
-    <aside className="scrollbar-hide flex w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950/50 lg:flex">
+    <aside className="scrollbar-hide flex w-full min-w-0 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950/50 lg:flex">
       <div className="flex flex-col gap-4 p-4">
         {/* Marketplace: all tools (always visible) */}
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/50">
@@ -127,7 +129,7 @@ export function DashboardMiddlePanel({
           >
             <span className="flex items-center gap-2 text-sm font-medium text-zinc-300">
               <Package className="h-4 w-4 text-zinc-500" />
-              Marketplace
+              Tools
             </span>
             <span className="shrink-0 text-xs text-zinc-500">
               {sortedTools.length} tool{sortedTools.length !== 1 ? "s" : ""}
@@ -337,12 +339,25 @@ export function DashboardMiddlePanel({
                   <motion.div
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded border border-zinc-700 bg-zinc-900/80 p-2"
+                    className="rounded border border-zinc-700 bg-zinc-900/80 overflow-hidden"
                   >
-                    <p className="mb-1 text-xs font-medium text-zinc-500">Result</p>
-                    <pre className="max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words text-xs text-zinc-300">
-                      {JSON.stringify(executeResult, null, 2)}
-                    </pre>
+                    <button
+                      type="button"
+                      onClick={() => setResultExpanded((e) => !e)}
+                      className="flex w-full items-center justify-between gap-2 p-2 text-left"
+                    >
+                      <span className="text-xs font-medium text-zinc-500">Result</span>
+                      {resultExpanded ? (
+                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      )}
+                    </button>
+                    {resultExpanded && (
+                      <pre className="max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-2 pt-0 text-xs text-zinc-300">
+                        {JSON.stringify(executeResult, null, 2)}
+                      </pre>
+                    )}
                   </motion.div>
                 )}
               </div>

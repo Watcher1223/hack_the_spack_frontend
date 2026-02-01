@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Universal Adapter | Self-Extending Agent Marketplace",
+  title: "MCP Hub",
   description:
-    "Agents that discover APIs, convert them into MCP tools on the fly, and reuse them forever. The internet as a live, growing interface for agents.",
+    "One MCP server. Add tools once—everyone with access runs them. A shared collection of tools for your team.",
 };
 
 export default function RootLayout({

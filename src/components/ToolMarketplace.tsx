@@ -13,6 +13,8 @@ import {
   Cloud,
   Lock,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { VerifiedCapability, ToolStatus } from "@/types";
 import { api } from "@/lib/api-client";
@@ -64,6 +66,7 @@ function ToolPreviewDrawer({
   const config = STATUS_CONFIG[statusKey];
   const Icon = config.icon;
   const [executeResult, setExecuteResult] = useState<Record<string, unknown> | null>(null);
+  const [executeResultExpanded, setExecuteResultExpanded] = useState(true);
   const [executeLoading, setExecuteLoading] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
@@ -83,6 +86,7 @@ function ToolPreviewDrawer({
       }
       const res = await api.executeTool(tool.name, params);
       setExecuteResult(typeof res.result === "object" && res.result != null ? res.result : { result: res });
+      setExecuteResultExpanded(true);
     } catch (err) {
       setExecuteError(err instanceof Error ? err.message : "Execution failed");
     } finally {
@@ -179,26 +183,42 @@ function ToolPreviewDrawer({
                 </div>
               )}
               {executeResult != null && (
-                <div className="mt-2 max-h-56 overflow-y-auto overflow-x-hidden rounded border border-zinc-700 bg-zinc-900/80 [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words [&_pre]:!overflow-visible">
-                  <SyntaxHighlighter
-                    language="json"
-                    style={oneDark}
-                    wrapLongLines
-                    customStyle={{
-                      margin: 0,
-                      padding: "0.75rem 1rem",
-                      background: "transparent",
-                      fontSize: "0.75rem",
-                      lineHeight: 1.5,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      overflowWrap: "break-word",
-                    }}
-                    codeTagProps={{ style: { background: "transparent" } }}
-                    showLineNumbers={false}
+                <div className="mt-2 overflow-hidden rounded border border-zinc-700 bg-zinc-900/80">
+                  <button
+                    type="button"
+                    onClick={() => setExecuteResultExpanded((e) => !e)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
                   >
-                    {JSON.stringify(executeResult, null, 2)}
-                  </SyntaxHighlighter>
+                    <span className="text-xs font-medium text-zinc-400">Result</span>
+                    {executeResultExpanded ? (
+                      <ChevronUp className="h-4 w-4 shrink-0 text-zinc-500" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
+                    )}
+                  </button>
+                  {executeResultExpanded && (
+                    <div className="max-h-56 overflow-y-auto overflow-x-hidden border-t border-zinc-700 [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words [&_pre]:!overflow-visible">
+                      <SyntaxHighlighter
+                        language="json"
+                        style={oneDark}
+                        wrapLongLines
+                        customStyle={{
+                          margin: 0,
+                          padding: "0.75rem 1rem",
+                          background: "transparent",
+                          fontSize: "0.75rem",
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          overflowWrap: "break-word",
+                        }}
+                        codeTagProps={{ style: { background: "transparent" } }}
+                        showLineNumbers={false}
+                      >
+                        {JSON.stringify(executeResult, null, 2)}
+                      </SyntaxHighlighter>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

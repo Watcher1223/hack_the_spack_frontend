@@ -19,14 +19,19 @@ import {
   Play,
   Code2,
   Link2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { TrustGovernanceLedger } from "./TrustGovernanceLedger";
 import { ApiAccess } from "./ApiAccess";
 import { UniversalAdapterLogo } from "./UniversalAdapterLogo";
 import { CommandInput } from "./CommandInput";
 import { ResultCard } from "./ResultCard";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { DashboardMiddlePanel, type ReferenceItem } from "./DashboardMiddlePanel";
 import { MarketplaceCenter } from "./MarketplaceCenter";
+import { DraggableResizer } from "./DraggableResizer";
 import type { ViewMode } from "@/types";
 import type { LogEntry } from "@/types";
 import { api } from "@/lib/api-client";
@@ -65,11 +70,13 @@ export function CommandCenter() {
   const [toolExecutionResult, setToolExecutionResult] = useState<any>(null);
   const [toolExecutionError, setToolExecutionError] = useState<string | null>(null);
   const [toolParamInputs, setToolParamInputs] = useState<Record<string, any>>({});
+  const [toolResultExpanded, setToolResultExpanded] = useState(true);
+  const [rightSidebarWidthPx, setRightSidebarWidthPx] = useState(320);
+  const [leftSidebarWidthPx, setLeftSidebarWidthPx] = useState(288);
   const eventSourceRef = useRef<EventSource | null>(null);
   const chatSentRef = useRef(false);
   const pendingNavigateToolRef = useRef<string | null>(null);
   const hasNavigatedToForgeRef = useRef(false);
-  const [showStreamingEvents, setShowStreamingEvents] = useState(true);
 
   /** When agent generates a new tool, switch to forge layout: marketplace on left, code + refs in center */
   const forgeMode = !!(
@@ -112,6 +119,7 @@ export function CommandCenter() {
     try {
       const result = await api.executeTool(selectedToolForDrawer.name, toolParamInputs);
       setToolExecutionResult(result);
+      setToolResultExpanded(true);
     } catch (err) {
       console.error('Tool execution failed:', err);
       setToolExecutionError(err instanceof Error ? err.message : 'Execution failed');
@@ -316,10 +324,10 @@ export function CommandCenter() {
           </div>
           <div>
             <h1 className="font-semibold tracking-tight text-zinc-100">
-              Universal Adapter
+              MCP Hub
             </h1>
             <p className="text-xs text-zinc-500">
-              Self-extending agent marketplace
+              One server. Everyone&apos;s tools.
             </p>
           </div>
         </div>
@@ -345,17 +353,31 @@ export function CommandCenter() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar only when agent is generating a new tool (forge mode) */}
         {view === "home" && forgeMode && (
-          <DashboardMiddlePanel
-            marketplaceSearchResults={marketplaceSearchResults}
-            marketplaceChecking={loading && demoStep === "checking"}
-            references={references}
-            currentTool={currentToolForPanel}
-            justCreatedToolId={justCreatedToolId}
-            onSelectTool={setCurrentToolForPanel}
-          />
+          <>
+            <div
+              className="shrink-0 overflow-hidden"
+              style={{ width: leftSidebarWidthPx, minWidth: 200, maxWidth: 480 }}
+            >
+              <DashboardMiddlePanel
+                marketplaceSearchResults={marketplaceSearchResults}
+                marketplaceChecking={loading && demoStep === "checking"}
+                references={references}
+                currentTool={currentToolForPanel}
+                justCreatedToolId={justCreatedToolId}
+                onSelectTool={setCurrentToolForPanel}
+              />
+            </div>
+            <DraggableResizer
+              width={leftSidebarWidthPx}
+              onResize={setLeftSidebarWidthPx}
+              minWidth={200}
+              maxWidth={480}
+              invert={false}
+            />
+          </>
         )}
         {/* Main: default = Marketplace center; forge = Code | References split */}
-        <main className="scrollbar-hide flex-1 overflow-auto p-6">
+        <main className="scrollbar-hide min-w-0 flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">
             {view === "home" && !forgeMode && (
               <motion.div
@@ -367,130 +389,12 @@ export function CommandCenter() {
               >
                 <div className="shrink-0 text-center">
                   <h2 className="text-xl font-medium tracking-tight text-zinc-100 sm:text-2xl">
-                    Agents that grow their own tools
+                    One MCP server. Everyone&apos;s tools.
                   </h2>
                   <p className="mt-2 text-sm text-zinc-500">
-                    Discover → build → save → reuse.
+                    Add tools once. Everyone with access runs them.
                   </p>
                 </div>
-
-                {/* Streaming Agent Messages */}
-                {streamingEvents.length > 0 && (
-                  <div className="shrink-0 rounded-lg border border-zinc-800 bg-zinc-950/80 shadow-xl">
-                    <button
-                      onClick={() => setShowStreamingEvents(!showStreamingEvents)}
-                      className="flex w-full items-center justify-between border-b border-zinc-800 px-4 py-3 hover:bg-zinc-900/50"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${loading ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
-                        <span className="font-medium text-zinc-300">Agent Stream</span>
-                        {loading && (
-                          <Loader2 className="h-3 w-3 animate-spin text-zinc-500" />
-                        )}
-                      </div>
-                      <span className="text-xs text-zinc-500">
-                        {streamingEvents.length} event{streamingEvents.length !== 1 ? 's' : ''}
-                      </span>
-                    </button>
-                    {showStreamingEvents && (
-                      <div className="terminal-scroll max-h-96 overflow-y-auto p-4 space-y-3">
-                        {streamingEvents.map((event, idx) => {
-                          // Assistant message - show prominently
-                          if (event.type === 'assistant_message') {
-                            return (
-                              <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <Zap className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-xs text-zinc-500 mb-1">
-                                      Agent · Iteration {event.iteration}
-                                    </div>
-                                    <p className="text-sm text-zinc-200 leading-relaxed">
-                                      {event.content}
-                                    </p>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            );
-                          }
-
-                          // Tool call - show with arguments
-                          if (event.type === 'tool_call') {
-                            return (
-                              <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="rounded-lg border border-blue-800/50 bg-blue-900/10 p-3"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <Zap className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-xs text-blue-400 font-medium mb-1">
-                                      Calling: {event.tool_name}
-                                    </div>
-                                    {event.arguments && Object.keys(event.arguments).length > 0 && (
-                                      <pre className="text-xs text-zinc-400 bg-zinc-950/50 rounded p-2 overflow-x-auto">
-                                        {JSON.stringify(event.arguments, null, 2)}
-                                      </pre>
-                                    )}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            );
-                          }
-
-                          // Tool result - show with status
-                          if (event.type === 'tool_result') {
-                            const isSuccess = event.status === 'success';
-                            return (
-                              <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className={`rounded-lg border p-3 ${
-                                  isSuccess
-                                    ? 'border-emerald-800/50 bg-emerald-900/10'
-                                    : 'border-red-800/50 bg-red-900/10'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2">
-                                  {isSuccess ? (
-                                    <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                                  ) : (
-                                    <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`text-xs font-medium mb-1 ${
-                                      isSuccess ? 'text-emerald-400' : 'text-red-400'
-                                    }`}>
-                                      {event.tool_name} · {event.status}
-                                    </div>
-                                    {event.result_preview && (
-                                      <pre className="text-xs text-zinc-400 bg-zinc-950/50 rounded p-2 overflow-x-auto">
-                                        {event.result_preview}
-                                      </pre>
-                                    )}
-                                    {event.error && (
-                                      <p className="text-xs text-red-400">{event.error}</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            );
-                          }
-
-                          return null;
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 <div className="flex-1 min-h-0">
                   <MarketplaceCenter
@@ -596,9 +500,21 @@ export function CommandCenter() {
           </AnimatePresence>
         </main>
 
-        {/* Right sidebar: Conversations (top) + chat input (bottom) when on home */}
+        {/* Right sidebar: Conversations (top) + chat (Agent Stream) + input (bottom) when on home */}
         {view === "home" && (
-          <aside className="hidden w-80 shrink-0 flex flex-col border-l border-zinc-800 xl:flex">
+          <>
+            <DraggableResizer
+              width={rightSidebarWidthPx}
+              onResize={setRightSidebarWidthPx}
+              minWidth={240}
+              maxWidth={560}
+              invert={true}
+              className="hidden xl:block"
+            />
+            <aside
+              className="hidden shrink-0 flex-col border-l border-zinc-800 xl:flex"
+              style={{ width: rightSidebarWidthPx, minWidth: 240, maxWidth: 560 }}
+            >
             <div className="shrink-0 border-b border-zinc-800 p-3">
               <p className="mb-2 text-xs font-medium text-zinc-500">Conversations</p>
               <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
@@ -624,11 +540,91 @@ export function CommandCenter() {
                 )}
               </div>
             </div>
-            <div className="flex-1 min-h-0" />
+            {/* Chat: streamed messages above input (no section box) */}
+            <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto p-3">
+              {lastPrompt && (
+                <div className="mb-2 flex justify-end">
+                  <div className="max-w-[90%] rounded-2xl rounded-br-md bg-emerald-500/20 px-3 py-2 text-sm text-zinc-100">
+                    {lastPrompt}
+                  </div>
+                </div>
+              )}
+              {streamingEvents.map((event, idx) => {
+                if (event.type === "assistant_message") {
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-2 flex justify-start"
+                    >
+                      <div className="max-w-[90%] rounded-2xl rounded-bl-md bg-zinc-800/80 px-3 py-2 text-sm text-zinc-200">
+                        {event.iteration != null && (
+                          <span className="mb-1 block text-[10px] text-zinc-500">Iteration {event.iteration}</span>
+                        )}
+                        <p className="leading-relaxed">{event.content}</p>
+                      </div>
+                    </motion.div>
+                  );
+                }
+                if (event.type === "tool_call") {
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-2 flex justify-start"
+                    >
+                      <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-blue-800/40 bg-blue-900/20 px-3 py-2 text-sm">
+                        <span className="text-[10px] font-medium text-blue-400">Calling {event.tool_name}</span>
+                        {event.arguments && Object.keys(event.arguments).length > 0 && (
+                          <pre className="mt-1 overflow-x-auto rounded bg-zinc-950/50 p-2 text-[10px] text-zinc-400">
+                            {JSON.stringify(event.arguments, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                }
+                if (event.type === "tool_result") {
+                  const isSuccess = event.status === "success";
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-2 flex justify-start"
+                    >
+                      <div
+                        className={`max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-sm ${
+                          isSuccess
+                            ? "border border-emerald-800/40 bg-emerald-900/20"
+                            : "border border-red-800/40 bg-red-900/20"
+                        }`}
+                      >
+                        <span
+                          className={`text-[10px] font-medium ${isSuccess ? "text-emerald-400" : "text-red-400"}`}
+                        >
+                          {event.tool_name} · {event.status}
+                        </span>
+                        {event.result_preview && (
+                          <pre className="mt-1 overflow-x-auto rounded bg-zinc-950/50 p-2 text-[10px] text-zinc-400">
+                            {event.result_preview}
+                          </pre>
+                        )}
+                        {event.error && <p className="mt-1 text-[10px] text-red-400">{event.error}</p>}
+                      </div>
+                    </motion.div>
+                  );
+                }
+                return null;
+              })}
+            </div>
             <div className="shrink-0 border-t border-zinc-800 p-4">
               <CommandInput onSubmit={handleSubmit} disabled={loading || demoStep === "forging"} />
             </div>
           </aside>
+          </>
         )}
       </div>
       {/* Sponsor alignment strip */}
@@ -757,13 +753,29 @@ export function CommandCenter() {
 
                   {/* Preview Snippet */}
                   {selectedToolForDrawer.preview_snippet && (
-                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-4">
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-4 overflow-hidden">
                       <p className="mb-2 text-xs font-medium text-zinc-500">
                         Function Signature
                       </p>
-                      <pre className="font-mono text-sm leading-relaxed text-zinc-300">
-                        {selectedToolForDrawer.preview_snippet}
-                      </pre>
+                      <div className="[&_pre]:!whitespace-pre-wrap [&_pre]:!break-words [&_pre]:!overflow-x-hidden [&_pre]:!text-xs">
+                        <SyntaxHighlighter
+                          language="python"
+                          style={oneDark}
+                          wrapLongLines
+                          customStyle={{
+                            margin: 0,
+                            padding: "0.75rem 1rem",
+                            background: "rgb(24 24 27)",
+                            borderRadius: "0.5rem",
+                            fontSize: "0.75rem",
+                            lineHeight: 1.6,
+                          }}
+                          codeTagProps={{ style: { background: "transparent" } }}
+                          showLineNumbers={false}
+                        >
+                          {selectedToolForDrawer.preview_snippet}
+                        </SyntaxHighlighter>
+                      </div>
                     </div>
                   )}
 
@@ -776,10 +788,10 @@ export function CommandCenter() {
                       </div>
                       <div className="space-y-3">
                         {Object.entries(selectedToolForDrawer.parameters.properties).map(([name, param]: [string, any]) => (
-                          <div key={name} className="border-l-2 border-zinc-700 pl-3">
-                            <div className="flex items-center gap-2 mb-1">
+                          <div key={name} className="border-l-2 border-emerald-800/50 pl-3">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
                               <code className="text-sm font-medium text-emerald-400">{name}</code>
-                              <span className="text-xs text-zinc-500">{param.type}</span>
+                              <span className="text-xs text-blue-400">{param.type}</span>
                               {selectedToolForDrawer.parameters.required?.includes(name) && (
                                 <span className="text-xs text-red-400">required</span>
                               )}
@@ -788,8 +800,8 @@ export function CommandCenter() {
                               <p className="text-xs text-zinc-500">{param.description}</p>
                             )}
                             {param.default !== undefined && (
-                              <p className="text-xs text-zinc-600 mt-1">
-                                Default: <code className="text-zinc-500">{JSON.stringify(param.default)}</code>
+                              <p className="text-xs text-zinc-500 mt-1">
+                                Default: <code className="text-amber-300/90">{JSON.stringify(param.default)}</code>
                               </p>
                             )}
                           </div>
@@ -864,12 +876,23 @@ export function CommandCenter() {
                       {/* Execution Result */}
                       {toolExecutionResult && (
                         <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-900/20 p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <CheckCircle className="h-4 w-4 text-emerald-400" />
-                            <h5 className="text-sm font-medium text-emerald-300">Execution Result</h5>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setToolResultExpanded((e) => !e)}
+                            className="flex w-full items-center justify-between gap-2 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-emerald-400" />
+                              <h5 className="text-sm font-medium text-emerald-300">Execution Result</h5>
+                            </div>
+                            {toolResultExpanded ? (
+                              <ChevronUp className="h-4 w-4 shrink-0 text-zinc-500" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
+                            )}
+                          </button>
                           {toolExecutionResult.execution_metadata && (
-                            <div className="mb-3 flex flex-wrap gap-3 text-xs text-zinc-400">
+                            <div className="mb-3 mt-2 flex flex-wrap gap-3 text-xs text-zinc-400">
                               <div>
                                 Duration: <span className="text-zinc-300">{toolExecutionResult.execution_metadata.duration_ms}ms</span>
                               </div>
@@ -883,11 +906,13 @@ export function CommandCenter() {
                               )}
                             </div>
                           )}
-                          <div className="rounded border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto">
-                            <pre className="font-mono text-xs text-zinc-300">
-                              {JSON.stringify(toolExecutionResult.result, null, 2)}
-                            </pre>
-                          </div>
+                          {toolResultExpanded && (
+                            <div className="rounded border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto max-h-80 overflow-y-auto">
+                              <pre className="font-mono text-xs text-zinc-300 whitespace-pre-wrap break-words">
+                                {JSON.stringify(toolExecutionResult.result, null, 2)}
+                              </pre>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -906,16 +931,30 @@ export function CommandCenter() {
 
                   {/* Code Block */}
                   {selectedToolForDrawer.code && (
-                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4">
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4 overflow-hidden">
                       <div className="flex items-center gap-2 mb-3">
                         <Code2 className="h-4 w-4 text-zinc-400" />
                         <h4 className="text-sm font-medium text-zinc-300">Source Code</h4>
                         <span className="text-xs text-zinc-500">Python</span>
                       </div>
-                      <div className="rounded border border-zinc-800 bg-zinc-950 p-4 overflow-x-auto">
-                        <pre className="font-mono text-xs leading-relaxed text-zinc-300">
-                          <code>{selectedToolForDrawer.code}</code>
-                        </pre>
+                      <div className="rounded border border-zinc-800 overflow-hidden [&_pre]:!whitespace-pre-wrap [&_pre]:!break-words [&_pre]:!overflow-x-hidden">
+                        <SyntaxHighlighter
+                          language="python"
+                          style={oneDark}
+                          wrapLongLines
+                          customStyle={{
+                            margin: 0,
+                            padding: "1rem",
+                            background: "rgb(9 9 11)",
+                            borderRadius: "0.375rem",
+                            fontSize: "0.75rem",
+                            lineHeight: 1.5,
+                          }}
+                          codeTagProps={{ style: { background: "transparent" } }}
+                          showLineNumbers={true}
+                        >
+                          {selectedToolForDrawer.code}
+                        </SyntaxHighlighter>
                       </div>
                     </div>
                   )}
