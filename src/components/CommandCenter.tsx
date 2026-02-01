@@ -58,7 +58,11 @@ export function CommandCenter() {
   const [justCreatedToolId, setJustCreatedToolId] = useState<string | null>(null);
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
-  const [conversations, setConversations] = useState<{ id: string; prompt?: string }[]>([]);
+  const [conversations, setConversations] = useState<{ id: string; conversation_id: string; prompt?: string }[]>([]);
+  const [selectedConversationContent, setSelectedConversationContent] = useState<string | null>(null);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
+  const [toolsRefreshKey, setToolsRefreshKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discoveryLogs, setDiscoveryLogs] = useState<LogEntry[]>([]);
@@ -114,6 +118,23 @@ export function CommandCenter() {
     }
   }, [selectedToolForDrawer]);
 
+  // List conversations first, store ids; use those ids to get conversation when user clicks
+  useEffect(() => {
+    if (view !== "home") return;
+    api
+      .listConversations(50, 0)
+      .then((list) => {
+        setConversations(
+          list.map((c) => ({
+            id: c.id,
+            conversation_id: c.conversation_id,
+            prompt: c.final_output != null ? (c.final_output.length > 80 ? `${c.final_output.slice(0, 80)}…` : c.final_output) : undefined,
+          }))
+        );
+      })
+      .catch(() => {});
+  }, [view]);
+
   // Keep chat scrolled to bottom so new messages stay above the input
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -122,7 +143,7 @@ export function CommandCenter() {
       el.scrollTop = el.scrollHeight;
     });
     return () => cancelAnimationFrame(raf);
-  }, [streamingEvents, lastPrompt, loading]);
+  }, [streamingEvents, lastPrompt, loading, selectedConversationContent]);
 
   const handleToolExecute = useCallback(async () => {
     if (!selectedToolForDrawer) return;
@@ -188,6 +209,7 @@ export function CommandCenter() {
   }, [forgeToolName, justCreatedToolId]);
 
   const handleSubmit = useCallback(async (value: string) => {
+    setSelectedConversationContent(null);
     setLastPrompt(value);
     setLoading(true);
     setError(null);
@@ -260,6 +282,7 @@ export function CommandCenter() {
           setLoading(false);
           setDemoStep("done");
           setShowResult(true);
+          setToolsRefreshKey((k) => k + 1);
           const toolToShow = pendingNavigateToolRef.current;
           if (toolToShow) {
             hasNavigatedToForgeRef.current = true;
@@ -289,7 +312,7 @@ export function CommandCenter() {
           chatSentRef.current = true;
           setConversationId(cid);
           setConversations((prev) =>
-            prev.some((c) => c.id === cid) ? prev : [...prev, { id: cid, prompt: value }]
+            prev.some((c) => c.id === cid) ? prev : [...prev, { id: cid, conversation_id: cid, prompt: value }]
           );
           setDemoStep("discovering");
             api
@@ -379,6 +402,7 @@ export function CommandCenter() {
                 references={references}
                 currentTool={currentToolForPanel}
                 justCreatedToolId={justCreatedToolId}
+                toolsRefreshKey={toolsRefreshKey}
                 onSelectTool={setCurrentToolForPanel}
               />
             </div>
@@ -418,6 +442,7 @@ export function CommandCenter() {
                       setSelectedToolForDrawer(tool);
                     }}
                     marketplaceChecking={loading && demoStep === "checking"}
+                    toolsRefreshKey={toolsRefreshKey}
                   />
                 </div>
               </motion.div>
@@ -540,15 +565,32 @@ export function CommandCenter() {
                     <button
                       key={conv.id}
                       type="button"
-                      onClick={() => setConversationId(conv.id)}
+                      onClick={() => {
+                        const idToFetch = conv.conversation_id || conv.id;
+                        setConversationId(idToFetch);
+                        setSelectedConversationContent(null);
+                        setConversationLoadError(null);
+                        setConversationLoading(true);
+                        api
+                          .getConversation(idToFetch)
+                          .then((content) => {
+                            setSelectedConversationContent(content);
+                            setConversationLoadError(null);
+                          })
+                          .catch((err) => {
+                            setSelectedConversationContent(null);
+                            setConversationLoadError(err instanceof Error ? err.message : "Could not load conversation");
+                          })
+                          .finally(() => setConversationLoading(false));
+                      }}
                       className={`shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
-                        conversationId === conv.id
+                        conversationId === (conv.conversation_id || conv.id)
                           ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
                           : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
                       }`}
                     >
                       <span className="line-clamp-2 block max-w-[200px]">
-                        {conv.prompt ? (conv.prompt.length > 36 ? `${conv.prompt.slice(0, 36)}…` : conv.prompt) : conv.id.slice(0, 8)}
+                        {conv.prompt ? (conv.prompt.length > 36 ? `${conv.prompt.slice(0, 36)}…` : conv.prompt) : (conv.conversation_id || conv.id).slice(0, 8)}
                       </span>
                     </button>
                   ))
@@ -560,6 +602,17 @@ export function CommandCenter() {
               ref={chatScrollRef}
               className="scrollbar-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 pr-6"
             >
+              {conversationLoading ? (
+                <div className="flex items-center gap-2 py-4 text-sm text-zinc-500">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span>Loading conversation…</span>
+                </div>
+              ) : selectedConversationContent != null ? (
+                <div className="chat-markdown text-sm text-zinc-200">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedConversationContent}</ReactMarkdown>
+                </div>
+              ) : (
+                <>
               {lastPrompt && (
                 <div className="mb-2 flex justify-end">
                   <div className="max-w-[90%] rounded-2xl rounded-br-md bg-emerald-500/20 px-3 py-2 text-sm text-zinc-100">
@@ -705,6 +758,8 @@ export function CommandCenter() {
                   </span>
                   <span>Processing…</span>
                 </motion.div>
+              )}
+                </>
               )}
             </div>
             <div className="shrink-0 border-t border-zinc-800 px-5 py-4 pr-6">

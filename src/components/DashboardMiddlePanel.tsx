@@ -29,6 +29,8 @@ interface DashboardMiddlePanelProps {
   references: ReferenceItem[];
   currentTool: EnhancedTool | null;
   justCreatedToolId?: string | null;
+  /** Increment to soft-refresh the tools list (e.g. after agent completes) */
+  toolsRefreshKey?: number;
   onSelectTool?: (tool: EnhancedTool) => void;
 }
 
@@ -38,6 +40,7 @@ export function DashboardMiddlePanel({
   references,
   currentTool,
   justCreatedToolId = null,
+  toolsRefreshKey = 0,
   onSelectTool,
 }: DashboardMiddlePanelProps) {
   const [allTools, setAllTools] = useState<EnhancedTool[]>([]);
@@ -69,7 +72,7 @@ export function DashboardMiddlePanel({
     return () => {
       cancelled = true;
     };
-  }, [justCreatedToolId]); // refetch when a new tool was just created
+  }, [justCreatedToolId, toolsRefreshKey]); // refetch when a new tool was just created or agent completed
 
   const filteredTools = useMemo(() => {
     if (!searchQuery.trim()) return allTools;

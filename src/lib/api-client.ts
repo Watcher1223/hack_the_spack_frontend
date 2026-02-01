@@ -8,7 +8,8 @@ import type {
   Action,
   VerifiedTool,
   APIError,
-  DiscoveryLog
+  DiscoveryLog,
+  ConversationSummary
 } from '@/types/api';
 
 /** Universal Adapter API 2.0.0 — OAS 3.1, AI agent with tool marketplace and governance. See /openapi.json on the backend. */
@@ -259,6 +260,48 @@ export class UniversalAdapterAPI {
     }
 
     return await response.json();
+  }
+
+  // ============================================
+  // Conversations
+  // ============================================
+
+  /**
+   * List recent conversations
+   */
+  async listConversations(limit = 20, skip = 0): Promise<ConversationSummary[]> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      skip: skip.toString(),
+    });
+    const response = await fetch(`${this.baseURL}/conversations?${params}`);
+    if (!response.ok) {
+      throw new Error(`Failed to list conversations: ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  /**
+   * Get a specific conversation by ID (returns transcript/content as string)
+   */
+  async getConversation(conversationId: string): Promise<string> {
+    const response = await fetch(
+      `${this.baseURL}/conversations/${encodeURIComponent(conversationId)}`
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to get conversation: ${response.statusText}`);
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    const text = await response.text();
+    if (contentType.includes('application/json')) {
+      try {
+        const data = JSON.parse(text);
+        return typeof data === 'string' ? data : (data?.content ?? data?.final_output ?? data?.response ?? JSON.stringify(data));
+      } catch {
+        return text;
+      }
+    }
+    return text;
   }
 
   // ============================================

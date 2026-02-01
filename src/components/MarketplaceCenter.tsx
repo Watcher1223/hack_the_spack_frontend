@@ -8,11 +8,14 @@ import type { EnhancedTool } from "@/types/api";
 interface MarketplaceCenterProps {
   onSelectTool?: (tool: EnhancedTool) => void;
   marketplaceChecking?: boolean;
+  /** Increment to soft-refresh the tools list (e.g. after agent completes and may have added a tool) */
+  toolsRefreshKey?: number;
 }
 
 export function MarketplaceCenter({
   onSelectTool,
   marketplaceChecking = false,
+  toolsRefreshKey = 0,
 }: MarketplaceCenterProps) {
   const [allTools, setAllTools] = useState<EnhancedTool[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,7 @@ export function MarketplaceCenter({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toolsRefreshKey]);
 
   const filteredTools = useMemo(() => {
     if (!searchQuery.trim()) return allTools;

@@ -185,6 +185,15 @@ export interface ForgeResponse {
   };
 }
 
+/** Conversation summary from list */
+export interface ConversationSummary {
+  id: string;
+  conversation_id: string;
+  start_time?: string;
+  model?: string;
+  final_output?: string;
+}
+
 /** Action from action feed */
 export interface Action {
   id: string;
