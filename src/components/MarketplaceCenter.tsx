@@ -88,16 +88,14 @@ export function MarketplaceCenter({
                   onClick={() => onSelectTool?.(t)}
                   className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800/40"
                 >
-                  {t.description ? (
-                    <p className="text-sm leading-snug text-zinc-200 line-clamp-3">
-                      {t.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-zinc-400">{t.name}</p>
-                  )}
-                  <span className="mt-2 block font-mono text-[10px] text-zinc-500">
+                  <span className="block font-mono text-sm font-medium text-zinc-100">
                     {t.name}
                   </span>
+                  {t.description ? (
+                    <p className="mt-1.5 text-xs leading-snug text-zinc-400 line-clamp-3">
+                      {t.description}
+                    </p>
+                  ) : null}
                 </button>
               </li>
             ))}
